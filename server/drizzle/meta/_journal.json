@@ -24,9 +24,16 @@
       "breakpoints": true
     },
     {
+      "idx": 3,
+      "version": "7",
+      "when": 1793397145975,
+      "tag": "0003_remove_signup_cap",
+      "breakpoints": true
+    },
+    {
       "idx": 4,
       "version": "7",
-      "when": 1793397600000,
+      "when": 1793398182072,
       "tag": "0004_permanent_vibes",
       "breakpoints": true
     }

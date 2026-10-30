@@ -103,10 +103,9 @@ export async function resolveIdentityAccount(
         const config = (
           await tx.query<{
             signup_mode: string;
-            signup_cap: number;
             allowed_identities_json: unknown;
           }>(sql`
-        SELECT signup_mode, signup_cap, allowed_identities_json FROM store_config WHERE singleton = 1 FOR UPDATE`)
+        SELECT signup_mode, allowed_identities_json FROM store_config WHERE singleton = 1 FOR UPDATE`)
         )[0];
         // A separate READ COMMITTED statement sees an admission that committed while this request waited.
         account = (await lookup())[0];
@@ -114,14 +113,8 @@ export async function resolveIdentityAccount(
           const allowed = z
             .array(z.object({ provider: z.string(), subject: z.string() }))
             .parse(config?.allowed_identities_json);
-          const count = (
-            await tx.query<{ n: number }>(
-              sql`SELECT count(*)::integer AS n FROM users`,
-            )
-          )[0]!.n;
           if (
             !config ||
-            count >= config.signup_cap ||
             !(
               config.signup_mode === "open" ||
               (config.signup_mode === "allowlist" &&
@@ -133,7 +126,7 @@ export async function resolveIdentityAccount(
           )
             throw new StoreError(
               "admission_refused",
-              "New Milton accounts are closed or full.",
+              "New Milton accounts are closed.",
               403,
             );
           const id = `m_${crypto.randomUUID()}`;

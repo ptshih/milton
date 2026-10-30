@@ -34,7 +34,6 @@ export const storeConfig = pgTable(
   {
     singleton: integer("singleton").primaryKey(),
     signupMode: text("signup_mode").notNull().default("closed"),
-    signupCap: integer("signup_cap").notNull().default(50),
     allowedIdentities: jsonb("allowed_identities_json").notNull().default([]),
     limits: jsonb("limits_json").notNull().default(limits),
     updatedAt: timestamp("updated_at", { withTimezone: true })
@@ -47,7 +46,6 @@ export const storeConfig = pgTable(
       "config_signup_mode",
       sql`${t.signupMode} IN ('closed','allowlist','open')`,
     ),
-    check("config_signup_cap", sql`${t.signupCap} >= 0`),
     check(
       "config_allowlist_array",
       sql`jsonb_typeof(${t.allowedIdentities}) = 'array'`,
