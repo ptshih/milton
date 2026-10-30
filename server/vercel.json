@@ -1,0 +1,60 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "bun run build",
+  "outputDirectory": "public",
+  "regions": ["iad1"],
+  "fluid": true,
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 60,
+      "includeFiles": "dist/**"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/new-recipe",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/recipes",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/recipes/:path*",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/download",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/mcp",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/login",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/consent",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/logout",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/health",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/.well-known/:path*",
+      "destination": "/api/index"
+    }
+  ]
+}

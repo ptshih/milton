@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1793333921355,
+      "tag": "0000_recipe_store",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793333921678,
+      "tag": "0001_store_invariants",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793380000000,
+      "tag": "0002_recipe_writes_and_pages",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+@import "./base.css";
+
+/* ============================================================
+   Tailwind theme: utilities resolve to the tokens in base.css,
+   so a class such as bg-bubble follows the active theme with no
+   dark: variant. `inline` is required because the token names
+   match the theme variables'; a non-inline theme would emit
+   self-referential custom properties.
+   ============================================================ */
+
+@theme inline {
+  /* The token palette only: Tailwind's colours are cleared, so an
+     off-palette class such as text-gray-500 produces nothing. */
+  --color-*: initial;
+  --color-ground: var(--ground);
+  --color-bubble: var(--bubble);
+  --color-attention: var(--attention);
+  --color-ink: var(--ink);
+  --color-on-ink: var(--on-ink);
+  --color-muted: var(--muted);
+  --color-success: var(--success);
+  --color-open: var(--open);
+  --color-attention-ink: var(--attention-ink);
+  --color-hairline: var(--hairline);
+  --color-input: var(--input);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+/* Look E's sizes that Tailwind's scale lacks: 17px names, 15px
+   pull request titles, 13px status lines, the bubble's and the
+   card's 20px corners and the draft block's 14px. Body text is
+   16px on base.css's 1.4 line. */
+@theme {
+  --text-title: 1.0625rem;
+  --text-title--line-height: 1.4;
+  --text-subject: 0.9375rem;
+  --text-subject--line-height: 1.4;
+  --text-status: 0.8125rem;
+  --text-status--line-height: 1.4;
+  --radius-bubble: 1.25rem;
+  --radius-block: 0.875rem;
+}

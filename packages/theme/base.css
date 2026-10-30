@@ -1,0 +1,98 @@
+/* ============================================================
+   Milton's design tokens: look E, a messenger shell in the
+   system font. Light is the default; dark follows the system's
+   prefers-color-scheme, and data-theme="light" or "dark" on
+   <html> forces either. contrast.test.ts holds every text and
+   background pair at 4.5:1 or better in both themes.
+   ============================================================ */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --ground: #ffffff; /* page, header, composer */
+  --bubble: #f0f0f2; /* Milton's bubbles */
+  --attention: #fff8c5; /* labels that need the user */
+
+  /* Text */
+  --ink: #111113; /* text; also the avatar and the send button */
+  --on-ink: #ffffff; /* text and icons on an ink fill */
+  --muted: #5c5c66; /* status lines, placeholders */
+  --success: #116b45; /* a confirmed send */
+  --open: #1a7f37; /* an open pull request, passing checks */
+  --attention-ink: #7d4e00; /* text on attention */
+
+  /* Lines */
+  --hairline: #e3e3e6; /* dividers */
+  --input: #d0d0d6; /* the composer's outline */
+
+  /* Shade under a raised surface on a wide screen: the name, the message box, the menu */
+  --shadow: rgba(17, 17, 19, 0.08);
+
+  /* The paper fortune. */
+  --fortune: #fbf5e9;
+  --fortune-ink: #403521;
+  --fortune-muted: #6c593a;
+  --fortune-line: #e7dbc5;
+  --fortune-fold: #eee1c9;
+
+  /* Type: the system font, no web fonts */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #111113;
+    --bubble: #26262b;
+    --attention: #3d3209;
+    --ink: #ededf0;
+    --on-ink: #111113;
+    --muted: #a1a1aa;
+    --success: #4cc38a;
+    --open: #3fb950;
+    --attention-ink: #f5d060;
+    --hairline: #2c2c31;
+    --input: #45454d;
+    --shadow: rgba(0, 0, 0, 0.4);
+    --fortune: #322c22;
+    --fortune-ink: #f2e7d3;
+    --fortune-muted: #d1bd99;
+    --fortune-line: #584a34;
+    --fortune-fold: #584a34;
+  }
+}
+
+/* The same dark values, forced; contrast.test.ts keeps the two blocks equal. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #111113;
+  --bubble: #26262b;
+  --attention: #3d3209;
+  --ink: #ededf0;
+  --on-ink: #111113;
+  --muted: #a1a1aa;
+  --success: #4cc38a;
+  --open: #3fb950;
+  --attention-ink: #f5d060;
+  --hairline: #2c2c31;
+  --input: #45454d;
+  --shadow: rgba(0, 0, 0, 0.4);
+  --fortune: #322c22;
+  --fortune-ink: #f2e7d3;
+  --fortune-muted: #d1bd99;
+  --fortune-line: #584a34;
+  --fortune-fold: #584a34;
+}
+
+@layer base {
+  body {
+    background-color: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.4;
+  }
+}
