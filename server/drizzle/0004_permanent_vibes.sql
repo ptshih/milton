@@ -13,6 +13,28 @@ BEGIN
   RETURN NEW;
 END $$;
 --> statement-breakpoint
+CREATE OR REPLACE FUNCTION milton_version_bytes() RETURNS trigger LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, public AS $$
+DECLARE retained bigint; lim jsonb;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    UPDATE users SET retained_bytes = retained_bytes - OLD.payload_bytes WHERE id = OLD.user_id;
+    RETURN OLD;
+  END IF;
+  UPDATE users SET retained_bytes = retained_bytes + NEW.payload_bytes WHERE id = NEW.user_id RETURNING retained_bytes INTO retained;
+  SELECT limits_json INTO lim FROM store_config WHERE singleton = 1;
+  IF COALESCE(NEW.details_json::jsonb->>'kind', '') NOT IN ('revert','restore')
+    AND retained > COALESCE((lim->>'history_bytes')::bigint, 0)
+    AND NOT (
+      NEW.version = 1 AND NEW.body = ''
+      AND NEW.actor_json::jsonb->>'kind' IS NOT DISTINCT FROM 'system'
+      AND NEW.details_json::jsonb->>'kind' IS NOT DISTINCT FROM 'create'
+      AND EXISTS (SELECT 1 FROM recipes WHERE user_id = NEW.user_id AND id = NEW.recipe_id AND name = 'vibes')
+    ) THEN
+    RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'recipe_history_limit';
+  END IF;
+  RETURN NEW;
+END $$;
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION milton_version_guard() RETURNS trigger LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, public AS $$
 DECLARE lim jsonb; head integer; source recipe_versions%ROWTYPE; recovery text; is_vibes boolean;
 BEGIN

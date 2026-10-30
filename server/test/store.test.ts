@@ -78,6 +78,11 @@ test("Postgres migrations are atomic and contain only the six application tables
         "SELECT pg_get_functiondef('milton_recipe_guard'::regproc) AS definition",
       )
     ).rows;
+    const oldBytesGuard = (
+      await pg.query(
+        "SELECT pg_get_functiondef('milton_version_bytes'::regproc) AS definition",
+      )
+    ).rows;
     await migrate(drizzle(pg), {
       migrationsFolder: new URL("../drizzle", import.meta.url).pathname,
     });
@@ -102,7 +107,7 @@ test("Postgres migrations are atomic and contain only the six application tables
     ).toEqual([{ n: journal.entries.length }]);
     const guardDefinitions = () =>
       pg.query(
-        "SELECT proname, pg_get_functiondef(oid) AS definition FROM pg_proc WHERE proname IN ('milton_recipe_guard','milton_version_guard') ORDER BY proname",
+        "SELECT proname, pg_get_functiondef(oid) AS definition FROM pg_proc WHERE proname IN ('milton_recipe_guard','milton_version_guard','milton_version_bytes') ORDER BY proname",
       );
     const upgradedGuards = (await guardDefinitions()).rows;
     await pg.exec(
@@ -120,6 +125,13 @@ test("Postgres migrations are atomic and contain only the six application tables
         )
       ).rows,
     ).toEqual(oldRecipeGuard);
+    expect(
+      (
+        await pg.query(
+          "SELECT pg_get_functiondef('milton_version_bytes'::regproc) AS definition",
+        )
+      ).rows,
+    ).toEqual(oldBytesGuard);
     expect((await pg.query("SELECT * FROM recipe_versions")).rows).toEqual(
       before,
     );
@@ -1029,6 +1041,31 @@ test("write refusals roll back charges and full caps still allow stored recovery
     expect((await person.downloadRecipes()).map((v) => v.name)).not.toContain(
       "sample",
     );
+    // Recreate missing vibes even when the remaining history fills the cap.
+    await local.db.query(
+      sql`DELETE FROM recipes WHERE user_id=${auth.userId} AND name='vibes'`,
+    );
+    const beforeRepair = await person.usage();
+    expect(beforeRepair.retained_bytes).toBeGreaterThan(0);
+    await local.db.query(
+      sql`UPDATE store_config SET limits_json=limits_json || jsonb_build_object('history_bytes',${beforeRepair.retained_bytes}::bigint)`,
+    );
+    const repaired = await person.getVibes();
+    expect(repaired).toMatchObject({
+      name: "vibes",
+      text: "",
+      archived: false,
+    });
+    expect(repaired.version).toMatch(/^vibes@1·/);
+    expect(await person.getVibes()).toEqual(repaired);
+    expect((await person.history("vibes")).items).toMatchObject([
+      { version: 1, reason: "Created vibes", actor: { kind: "system" } },
+    ]);
+    const afterRepair = await person.usage();
+    expect(afterRepair.retained_bytes).toBeGreaterThan(
+      beforeRepair.retained_bytes,
+    );
+    expect(afterRepair.writes).toBe(beforeRepair.writes);
   } finally {
     await local.dispose();
   }

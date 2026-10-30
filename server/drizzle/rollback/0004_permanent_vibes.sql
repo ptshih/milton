@@ -42,4 +42,19 @@ BEGIN
   RETURN NEW;
 END $$;
 
+CREATE OR REPLACE FUNCTION milton_version_bytes() RETURNS trigger LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, public AS $$
+DECLARE retained bigint; lim jsonb;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    UPDATE users SET retained_bytes = retained_bytes - OLD.payload_bytes WHERE id = OLD.user_id;
+    RETURN OLD;
+  END IF;
+  UPDATE users SET retained_bytes = retained_bytes + NEW.payload_bytes WHERE id = NEW.user_id RETURNING retained_bytes INTO retained;
+  SELECT limits_json INTO lim FROM store_config WHERE singleton = 1;
+  IF COALESCE(NEW.details_json::jsonb->>'kind', '') NOT IN ('revert','restore') AND retained > COALESCE((lim->>'history_bytes')::bigint, 0) THEN
+    RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'recipe_history_limit';
+  END IF;
+  RETURN NEW;
+END $$;
+
 COMMIT;
