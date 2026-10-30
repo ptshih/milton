@@ -62,9 +62,13 @@ function editor(
 ) {
   const action = (verb: string, label: string, fields = "") =>
     `<form method="post" enctype="multipart/form-data" action="${pathFor(recipe.name)}/${verb}">${csrf()}${fence(recipe)}${fields}<button class="secondary">${label}</button></form>`;
+  const controls =
+    recipe.name === "vibes"
+      ? ""
+      : `${recipe.archived ? action("restore", "Restore recipe") : action("archive", "Archive recipe", '<label>Reason<input name="reason" value="Archived recipe"></label>')}<details><summary>Delete recipe</summary><p>Deletes this recipe and every version. Type <strong>${e(recipe.name)}</strong> to confirm.</p>${action("delete", "Delete recipe and history", '<label>Recipe name<input name="confirmation" required autocomplete="off"></label>')}</details>`;
   return page(
-    recipe.name,
-    `${nav}${message ? `<p role="status">${e(message)}</p>` : ""}<p>Version ${numberOf(recipe)} · ${recipe.archived ? "Archived" : "Active"} · <a href="${pathFor(recipe.name)}/history">Version history</a></p>${submitted ? `<section><h2>Current saved version</h2><p>${e(recipe.description)}</p><pre>${e(recipe.text)}</pre><h2>Your unsaved edit</h2></section>` : ""}${editForm(csrf, recipe, submitted)}${recipe.archived ? action("restore", "Restore recipe") : action("archive", "Archive recipe", '<label>Reason<input name="reason" value="Archived recipe"></label>')}<details><summary>Delete recipe</summary><p>Deletes this recipe and every version. Type <strong>${e(recipe.name)}</strong> to confirm.</p>${action("delete", "Delete recipe and history", '<label>Recipe name<input name="confirmation" required autocomplete="off"></label>')}</details>`,
+    recipe.name === "vibes" ? "Your vibes" : recipe.name,
+    `${nav}${message ? `<p role="status">${e(message)}</p>` : ""}<p>Version ${numberOf(recipe)} · ${recipe.archived ? "Archived" : "Active"} · <a href="${pathFor(recipe.name)}/history">Version history</a></p>${submitted ? `<section><h2>Current saved version</h2><p>${e(recipe.description)}</p><pre>${e(recipe.text)}</pre><h2>Your unsaved edit</h2></section>` : ""}${editForm(csrf, recipe, submitted)}${controls}`,
     code,
   );
 }
@@ -186,7 +190,8 @@ export async function recipePages(
         });
       }
       const name = match[1]!;
-      current = await store.getRecipe(name);
+      current =
+        name === "vibes" ? await store.getVibes() : await store.getRecipe(name);
       if (!current)
         throw new StoreError("not_found", "This recipe does not exist.", 404);
       const tag = parseVersionTag(submitted.expected_version ?? "");
@@ -273,20 +278,26 @@ export async function recipePages(
     }
   }
   if (request.method !== "GET") return page("Method not allowed", nav, 405);
-  if (url.pathname === "/download")
+  if (url.pathname === "/download") {
+    await store.getVibes();
     return downloadResponse(await store.downloadRecipes());
+  }
   if (url.pathname === "/new-recipe")
     return page("New recipe", nav + editForm(csrf));
   if (url.pathname === "/") {
     const archived = url.searchParams.get("archived") === "1";
-    const [recipes, usage, vibes] = await Promise.all([
-      store.listRecipes(url.searchParams.get("cursor") ?? undefined, archived),
+    const vibes = await store.getVibes();
+    const [recipes, usage] = await Promise.all([
+      store.listRecipes(
+        url.searchParams.get("cursor") ?? undefined,
+        archived,
+        true,
+      ),
       store.usage(),
-      store.getVibes(),
     ]);
     return page(
-      archived ? "Archived recipes" : "Your recipes",
-      `${nav}${status(url) ? `<p role="status">${e(status(url))}</p>` : ""}${recipes.items.length ? `<ul class="recipe-list">${recipes.items.map((recipe) => `<li><a href="${pathFor(recipe.name)}">${e(recipe.name)}</a><span>Version ${numberOf(recipe)}</span><p>${e(recipe.description)}</p></li>`).join("")}</ul>` : "<p>No recipes here yet.</p>"}${recipes.next_cursor ? `<a href="/?${archived ? "archived=1&amp;" : ""}cursor=${encodeURIComponent(recipes.next_cursor)}">Older recipes</a>` : ""}<section><h2>Usage</h2><p>${usage.recipes} / ${usage.limits.recipes} recipes · ${usage.writes} / ${usage.limits.daily_writes} writes today · ${usage.tool_calls} / ${usage.limits.daily_calls} assistant calls today.</p><p>${usage.retained_bytes} / ${usage.limits.history_bytes} bytes of retained history. Daily caps reset at midnight UTC.</p></section>${vibes ? "" : "<p>No active vibes recipe: Download all will omit VIBES.md.</p>"}<form method="post" action="/logout">${csrf()}<button class="secondary">Sign out</button></form><p>Signing out of this browser does not disconnect your assistants.</p>`,
+      "Your vibes",
+      `${nav}${status(url) ? `<p role="status">${e(status(url))}</p>` : ""}<ul class="recipe-list"><li><a href="/recipes/vibes">Edit your vibes</a><span>Version ${numberOf(vibes)}</span><p>${e(vibes.description)}</p></li></ul><section><h2>${archived ? "Archived recipes" : "Your recipes"}</h2>${recipes.items.length ? `<ul class="recipe-list">${recipes.items.map((recipe) => `<li><a href="${pathFor(recipe.name)}">${e(recipe.name)}</a><span>Version ${numberOf(recipe)}</span><p>${e(recipe.description)}</p></li>`).join("")}</ul>` : "<p>No recipes here yet.</p>"}${recipes.next_cursor ? `<a href="/?${archived ? "archived=1&amp;" : ""}cursor=${encodeURIComponent(recipes.next_cursor)}">Older recipes</a>` : ""}</section><section><h2>Usage</h2><p>${usage.recipes} / ${usage.limits.recipes} recipes · ${usage.writes} / ${usage.limits.daily_writes} writes today · ${usage.tool_calls} / ${usage.limits.daily_calls} assistant calls today.</p><p>${usage.retained_bytes} / ${usage.limits.history_bytes} bytes of retained history. Daily caps reset at midnight UTC.</p></section><form method="post" action="/logout">${csrf()}<button class="secondary">Sign out</button></form><p>Signing out of this browser does not disconnect your assistants.</p>`,
     );
   }
   if (
@@ -295,7 +306,10 @@ export async function recipePages(
     (match[2] && match[2] !== "history")
   )
     return page("Not found", nav, 404);
-  const recipe = await store.getRecipe(match[1]!);
+  const recipe =
+    match[1] === "vibes"
+      ? await store.getVibes()
+      : await store.getRecipe(match[1]!);
   if (!recipe)
     return page("Not found", `${nav}<p>This recipe does not exist.</p>`, 404);
   if (!match[2]) return editor(csrf, recipe, status(url));

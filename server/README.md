@@ -63,7 +63,7 @@ This command explicitly reads `.dev.vars`. It does not use `.env.local` or an in
 
 The migrations create six application tables: `store_config`, `users`, `identities`, `recipes`, `recipe_versions`, and `usage_daily`. A fresh installation starts with sign-ups **closed**, with no account-count cap. Running migrations alone does not admit your first user.
 
-Apply migrations before deploying code that needs them. Existing recipe snapshots and retained-byte accounting are preserved by migration 0002, which strengthens the recovery guard without adding tables or backfilling data.
+Apply migrations before deploying code that needs them. Migration `0004_permanent_vibes.sql` exempts vibes from the recipe count and keeps legacy recovery active without changing existing rows. Apply it before this version of the server. Its guard-only rollback is `drizzle/rollback/0004_permanent_vibes.sql`; roll back the server first, then run that SQL. The migration journal is retained, so reapply the forward SQL explicitly before redeploying this version. Existing recipe snapshots and retained-byte accounting are preserved by migration 0002, which strengthens the recovery guard without adding tables or backfilling data.
 
 Migration 0003 removes the sign-up cap column and its constraint for both hosted and self-hosted installations. It preserves the admission mode and allow-list.
 
@@ -119,9 +119,11 @@ The first admitted sign-in creates a Milton user and two starter recipes, `email
 
 Add your configured `MCP_RESOURCE` URL as a remote HTTP MCP server in the assistant's settings. Complete browser sign-in and consent, then try `get_vibes` or `list_recipes`.
 
-The server exposes seven tools: `list_recipes`, `get_recipe`, `get_vibes`, `search`, `create_recipe`, `update_recipe`, and `archive_recipe`. Every connected assistant can read, create, update, and archive your recipes. Only you, through the signed-in browser app, can revert, restore, or delete them. No custom read/write OAuth scopes are required.
+The server exposes eight tools: `list_recipes`, `get_recipe`, `get_vibes`, `search`, `vibe_check`, `create_recipe`, `update_recipe`, and `archive_recipe`. Every connected assistant can read, create, update, and archive ordinary recipes. Vibes is permanent: it can be edited and reverted, but never archived, deleted, or renamed. It does not count toward the recipe limit. Only you, through the signed-in browser app, can revert, restore, or delete them. No custom read/write OAuth scopes are required.
 
-Milton verifies access-token signatures, the exact branch issuer, the resource audience, and expiry. MCP calls look up an existing active Milton account; they do not admit users or create starter recipes. Browser actions verify a live Neon session and use CSRF protection. Signing out of the browser does not disconnect assistants. Revoking a grant in Neon does not immediately invalidate an already issued JWT, which can remain valid for up to its one-hour lifetime.
+`get_vibes` returns `is_template: true` when the body is empty or still matches the starter, ignoring outer whitespace and CRLF line endings. The assistant offers a vibe check once per conversation when vibes is not set up yet. `vibe_check` returns a static interview and drafting guide; it makes no model call or recipe write. The assistant must show the draft and obtain approval before saving it. Explicitly requesting a check also works with customized vibes.
+
+Milton verifies access-token signatures, the exact branch issuer, the resource audience, and expiry. MCP calls look up an existing active Milton account; they do not admit users. Reading vibes through `get_vibes` or the page recreates a missing recipe with an empty body at version 1, attributed to the system with reason "Created vibes". Legacy archived vibes is restored as a new system version with its content preserved. Browser actions verify a live Neon session and use CSRF protection. Signing out of the browser does not disconnect assistants. Revoking a grant in Neon does not immediately invalidate an already issued JWT, which can remain valid for up to its one-hour lifetime.
 
 ## Local development and checks
 
@@ -139,7 +141,7 @@ In another terminal, run the interactive OAuth check:
 bun run --cwd server test:local
 ```
 
-The check uses the default local origin. If you changed the port or origin, supply `--origin` with the origin hosting `/mcp`, without the `/mcp` path. Open the loopback page address it prints and complete sign-in manually. It checks OAuth discovery, DCR, PKCE, callback state, seven-tool discovery, and calls to the four read tools. It does not open a browser automatically or print tokens.
+The check uses the default local origin. If you changed the port or origin, supply `--origin` with the origin hosting `/mcp`, without the `/mcp` path. Open the loopback page address it prints and complete sign-in manually. It checks OAuth discovery, DCR, PKCE, callback state, eight-tool discovery, and calls to the four read tools. It does not open a browser automatically or print tokens.
 
 Run automated checks from the repository root:
 
@@ -155,9 +157,9 @@ The tests use fresh PGlite databases and stubbed Auth responses. `test:client` u
 
 All runtime SQL lives in `src/store/`. Each request gets an accessor bound to the verified user's account. Reads use Neon HTTP; writes use real WebSocket transactions that lock the active user first, then the recipe. There are no shared tenant caches or module-global database connections.
 
-Each successful write appends one immutable snapshot with its author, time, and reason. Reads return a tag containing the recipe's immutable ID and integer version. Update and archive require that exact tag as `expected_version`. A stale tag, including one from a deleted and recreated name, returns a conflict with the current text and tag. Read the current recipe before retrying a conflict or an uncertain write outcome.
+Each successful write appends one immutable snapshot with its author, time, and reason. Reads return a tag containing the recipe's immutable ID and integer version. Update and archive require that exact tag as `expected_version`. A stale tag, including one from a deleted and recreated ordinary recipe, returns a conflict with the current text and tag. Read the current recipe before retrying a conflict or an uncertain write outcome.
 
-Revert appends a copy of the selected stored version, including archive state. Restore copies the current archived head and changes only its archive flag. Recovery must copy an eligible stored snapshot; an arbitrary new body cannot claim the recovery exemption. Deleting a recipe removes its history and releases its retained bytes.
+Revert appends a copy of the selected stored version, including archive state for ordinary recipes; vibes stays active. Restore copies the current archived head and changes only its archive flag. Recovery must copy an eligible stored snapshot; an arbitrary new body cannot claim the recovery exemption. Deleting a recipe removes its history and releases its retained bytes.
 
 Default caps are configurable in `store_config.limits_json`:
 
@@ -177,7 +179,7 @@ Attempted MCP calls count toward the call cap, including invalid arguments and r
 
 The page shows version history and plain-text diffs, escapes recipe text, and serves no browser JavaScript. Assistant authors are stored as issuer and exact client ID. History resolves display names from the signed-in person's grants, with bounded lookups and a client-ID fallback if metadata is unavailable.
 
-Download all reads one consistent snapshot of current unarchived recipes and produces `<name>/SKILL.md` folders with quoted YAML name and description fields. Active `vibes` also supplies top-level `VIBES.md`; an absent or archived vibes recipe omits that file. Bodies retain their stored bytes. History and attribution are excluded. Downloads above 4,000,000 bytes are refused without truncation.
+Download all reads one consistent snapshot of current unarchived recipes and produces `<name>/SKILL.md` folders with quoted YAML name and description fields. Active `vibes` also supplies top-level `VIBES.md`; the page repairs a missing or legacy archived vibes recipe before producing the archive. Bodies retain their stored bytes. History and attribution are excluded. Downloads above 4,000,000 bytes are refused without truncation.
 
 ## Import existing recipes
 

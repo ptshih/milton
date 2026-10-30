@@ -15,7 +15,8 @@ hands over the right one.
   for how you want any assistant to work with you, plus one per thing you do your way, like
   `email-voice`.
 - **One MCP server.** Assistants connect to `https://mcp.meetmilton.com/mcp` and read your recipes
-  with `list_recipes`, `get_recipe`, `get_vibes`, and `search`. They save what you tell them with
+  with `list_recipes`, `get_recipe`, `get_vibes`, and `search`. The `vibe_check` tool guides an
+  assistant through drafting your vibes for approval. They save what you tell them with
   `create_recipe`, `update_recipe`, and `archive_recipe`.
 - **Every version is kept.** Each write is a new version that records which assistant made it. The
   web page at `https://app.meetmilton.com` shows the history with diffs, and one tap reverts.

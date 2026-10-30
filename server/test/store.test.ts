@@ -3,6 +3,9 @@ import { sql } from "drizzle-orm";
 import { databaseFailure } from "../src/store/database";
 import { StoreError } from "../src/store/errors";
 import { localStore } from "./local-store";
+import templates from "../generated/templates.json";
+import { createStoreRecipeTools } from "../src/store/tools";
+import type { RecipeSnapshot } from "../src/store";
 import {
   guardStoreRequest,
   resolveIdentityAccount,
@@ -70,6 +73,16 @@ test("Postgres migrations are atomic and contain only the six application tables
       INSERT INTO recipe_versions (user_id,recipe_id,version,description,body,reason,actor_json) VALUES ('m_upgrade','upgrade',1,'Sample.','Original café','Initial','{}');`);
     const before = (await pg.query("SELECT * FROM recipe_versions")).rows;
     const bytes = (await pg.query("SELECT retained_bytes FROM users")).rows;
+    const oldRecipeGuard = (
+      await pg.query(
+        "SELECT pg_get_functiondef('milton_recipe_guard'::regproc) AS definition",
+      )
+    ).rows;
+    const oldBytesGuard = (
+      await pg.query(
+        "SELECT pg_get_functiondef('milton_version_bytes'::regproc) AS definition",
+      )
+    ).rows;
     await migrate(drizzle(pg), {
       migrationsFolder: new URL("../drizzle", import.meta.url).pathname,
     });
@@ -91,7 +104,65 @@ test("Postgres migrations are atomic and contain only the six application tables
           "SELECT count(*)::integer AS n FROM drizzle.__drizzle_migrations",
         )
       ).rows,
-    ).toEqual([{ n: 4 }]);
+    ).toEqual([{ n: journal.entries.length }]);
+    const guardDefinitions = () =>
+      pg.query(
+        "SELECT proname, pg_get_functiondef(oid) AS definition FROM pg_proc WHERE proname IN ('milton_recipe_guard','milton_version_guard','milton_version_bytes') ORDER BY proname",
+      );
+    const upgradedGuards = (await guardDefinitions()).rows;
+    await pg.exec(
+      await Bun.file(
+        new URL(
+          "../drizzle/rollback/0004_permanent_vibes.sql",
+          import.meta.url,
+        ),
+      ).text(),
+    );
+    expect(
+      (
+        await pg.query(
+          "SELECT pg_get_functiondef('milton_recipe_guard'::regproc) AS definition",
+        )
+      ).rows,
+    ).toEqual(oldRecipeGuard);
+    expect(
+      (
+        await pg.query(
+          "SELECT pg_get_functiondef('milton_version_bytes'::regproc) AS definition",
+        )
+      ).rows,
+    ).toEqual(oldBytesGuard);
+    expect((await pg.query("SELECT * FROM recipe_versions")).rows).toEqual(
+      before,
+    );
+    expect((await pg.query("SELECT retained_bytes FROM users")).rows).toEqual(
+      bytes,
+    );
+    await pg.exec(
+      "UPDATE store_config SET limits_json=limits_json || '{\"recipes\":1}'::jsonb",
+    );
+    await expect(
+      pg.query(
+        "INSERT INTO recipes (user_id,id,name) VALUES ('m_upgrade','vibes','vibes')",
+      ),
+    ).rejects.toThrow("recipe_count_limit");
+    await pg.exec(
+      "BEGIN;\n" +
+        (await Bun.file(
+          new URL("../drizzle/0004_permanent_vibes.sql", import.meta.url),
+        ).text()) +
+        "\nCOMMIT;",
+    );
+    expect((await guardDefinitions()).rows).toEqual(upgradedGuards);
+    await pg.query(
+      "INSERT INTO recipes (user_id,id,name) VALUES ('m_upgrade','vibes','vibes')",
+    );
+    expect((await pg.query("SELECT * FROM recipe_versions")).rows).toEqual(
+      before,
+    );
+    expect((await pg.query("SELECT retained_bytes FROM users")).rows).toEqual(
+      bytes,
+    );
     expect(
       (
         await pg.query<{ tablename: string }>(
@@ -182,6 +253,10 @@ test("Postgres enforces separate UTF-8 field and recipe caps and counts recovery
         [version, description, body, reason, JSON.stringify({ kind })],
       );
     await append(1, "é".repeat(250), "é".repeat(16384), "x".repeat(500));
+    // Vibes remains available even when the ordinary recipe allowance is full.
+    await local.pg.query(
+      "INSERT INTO recipes (user_id,id,name) VALUES ('m_caps','vibes','vibes')",
+    );
     expect(
       (await local.pg.query("SELECT retained_bytes FROM users")).rows,
     ).toEqual([{ retained_bytes: 33785 }]);
@@ -245,6 +320,17 @@ test("Postgres enforces separate UTF-8 field and recipe caps and counts recovery
     expect(
       (await local.pg.query("SELECT retained_bytes FROM users")).rows,
     ).toEqual([{ retained_bytes: 33785 }]);
+    await local.pg.exec(
+      `UPDATE store_config SET limits_json=limits_json || '{"recipes":2}'::jsonb`,
+    );
+    await local.pg.query(
+      "INSERT INTO recipes (user_id,id,name) VALUES ('m_caps','second','second')",
+    );
+    await expect(
+      local.pg.query(
+        "INSERT INTO recipes (user_id,id,name) VALUES ('m_caps','third','third')",
+      ),
+    ).rejects.toThrow("recipe_count_limit");
   } finally {
     await local.dispose();
   }
@@ -583,6 +669,153 @@ test("import verifies exact bytes, conflicts on retry and permits recreation aft
   }
 }, 30000);
 
+test("get_vibes preserves snapshots, recognizes unset bodies, and repairs missing vibes", async () => {
+  const local = await localStore();
+  try {
+    const template = templates.find((recipe) => recipe.name === "vibes");
+    if (!template) throw new Error("The generated vibes template is missing");
+    expect(template.body.trim()).toBe("# Working style");
+    await local.pg.exec("UPDATE store_config SET signup_mode='open'");
+    const identity = { provider: "neon", subject: "vibes-reader" };
+    await resolveIdentityAccount(local.env, identity);
+    const auth = await lookupIdentityAccount(local.env, identity);
+    const store = await storeForCurrentRequest(local.env, auth, {
+      issuer: "https://auth.example",
+      clientId: "vibes-client",
+    });
+    const person = await personStoreForCurrentRequest(local.env, auth);
+    const tools = createStoreRecipeTools(store);
+    const check = async (recipe: RecipeSnapshot, isTemplate: boolean) => {
+      const result = await tools.get_vibes();
+      expect(result.isError).not.toBe(true);
+      expect(JSON.parse(result.content[0].text)).toEqual({
+        ...recipe,
+        is_template: isTemplate,
+      });
+      expect(await store.getRecipe("vibes")).toEqual(recipe);
+      expect(
+        JSON.parse((await tools.get_recipe("vibes")).content[0].text),
+      ).toEqual(recipe);
+    };
+    let current = (await store.getRecipe("vibes"))!;
+    expect(current.version).toMatch(/^vibes@1·/);
+    await check(current, true);
+    current = await store.updateRecipe({
+      name: "vibes",
+      text: current.text,
+      description: "A changed description.",
+      reason: "Description only",
+      expected_version: current.version,
+    });
+    await check(current, true);
+    for (const [text, isTemplate] of [
+      [` \t\r\n${template.body.replace(/\n/g, "\r\n")}\r\n\t `, true],
+      ["", true],
+      [" \r\n\t", true],
+      ["# Working style\n\nUse short replies.\r\n", false],
+      ["# Working  style", false],
+      ["# My working style", false],
+      ["# Working style\n<!-- A preference -->", false],
+    ] as const) {
+      current = await store.updateRecipe({
+        name: "vibes",
+        text,
+        reason: "Style preference",
+        expected_version: current.version,
+      });
+      await check(current, isTemplate);
+    }
+    current = await person.revertRecipe({
+      name: "vibes",
+      source_version: 1,
+      expected_version: current.version,
+    });
+    expect(current.version).not.toMatch(/^vibes@1·/);
+    await check(current, true);
+    expect((await person.history("vibes")).items[0]?.actor).toEqual({
+      kind: "person",
+    });
+    const refusal = {
+      code: "vibes_required",
+      status: 422,
+      message:
+        "Your vibes can be edited and reverted, not archived or deleted.",
+    };
+    await expect(
+      store.archiveRecipe({
+        name: "vibes",
+        reason: "Archive",
+        expected_version: current.version,
+      }),
+    ).rejects.toMatchObject(refusal);
+    await expect(
+      person.deleteRecipe({
+        name: "vibes",
+        confirmation: "vibes",
+        expected_version: current.version,
+      }),
+    ).rejects.toMatchObject(refusal);
+    await expect(
+      store.createRecipe({
+        name: "vibes",
+        description: "Duplicate",
+        text: "Duplicate",
+      }),
+    ).rejects.toMatchObject({ code: "recipe_version_conflict" });
+    // Preserve an archived snapshot from before vibes became permanent.
+    await local.db.query(sql`INSERT INTO recipe_versions
+      (user_id,recipe_id,version,description,body,archived,reason,actor_json,details_json)
+      SELECT v.user_id,v.recipe_id,v.version+1,v.description,v.body,true,'Legacy archive','{}','{}'
+      FROM recipe_versions v JOIN recipes r ON r.user_id=v.user_id AND r.id=v.recipe_id
+      WHERE r.user_id=${auth.userId} AND r.name='vibes' AND v.version=(SELECT max(version) FROM recipe_versions WHERE user_id=r.user_id AND recipe_id=r.id)`);
+    const legacy = (await person.history("vibes")).items[0]!;
+    const restored = await store.getVibes();
+    expect(restored).toMatchObject({
+      text: current.text,
+      description: current.description,
+      archived: false,
+    });
+    expect(restored!.version).not.toBe(current.version);
+    await check(restored!, true);
+    expect((await person.history("vibes")).items[0]).toMatchObject({
+      reason: "Restored vibes",
+      actor: { kind: "system" },
+    });
+    const reverted = await person.revertRecipe({
+      name: "vibes",
+      source_version: legacy.version,
+      expected_version: restored!.version,
+    });
+    expect(reverted.archived).toBe(false);
+    // Simulate an account whose vibes was deleted before it became permanent.
+    await local.pg.exec(
+      `UPDATE store_config SET limits_json=limits_json || '{"recipes":1}'::jsonb`,
+    );
+    await local.db.query(
+      sql`DELETE FROM recipes WHERE user_id=${auth.userId} AND name='vibes'`,
+    );
+    const [repaired, repeated] = await Promise.all([
+      store.getVibes(),
+      store.getVibes(),
+    ]);
+    expect(repeated).toEqual(repaired);
+    expect(repaired).toMatchObject({
+      name: "vibes",
+      text: "",
+      archived: false,
+      version: expect.stringMatching(/^vibes@1·/),
+    });
+    await check(repaired!, true);
+    expect((await person.history("vibes")).items).toMatchObject([
+      { version: 1, reason: "Created vibes", actor: { kind: "system" } },
+    ]);
+    expect((await person.history("vibes")).items).toHaveLength(1);
+    expect((await person.usage()).recipes).toBe(1);
+  } finally {
+    await local.dispose();
+  }
+}, 30000);
+
 test("writes commit once, conflict with the current tag, and fence recreated names", async () => {
   const local = await localStore();
   try {
@@ -808,6 +1041,31 @@ test("write refusals roll back charges and full caps still allow stored recovery
     expect((await person.downloadRecipes()).map((v) => v.name)).not.toContain(
       "sample",
     );
+    // Recreate missing vibes even when the remaining history fills the cap.
+    await local.db.query(
+      sql`DELETE FROM recipes WHERE user_id=${auth.userId} AND name='vibes'`,
+    );
+    const beforeRepair = await person.usage();
+    expect(beforeRepair.retained_bytes).toBeGreaterThan(0);
+    await local.db.query(
+      sql`UPDATE store_config SET limits_json=limits_json || jsonb_build_object('history_bytes',${beforeRepair.retained_bytes}::bigint)`,
+    );
+    const repaired = await person.getVibes();
+    expect(repaired).toMatchObject({
+      name: "vibes",
+      text: "",
+      archived: false,
+    });
+    expect(repaired.version).toMatch(/^vibes@1·/);
+    expect(await person.getVibes()).toEqual(repaired);
+    expect((await person.history("vibes")).items).toMatchObject([
+      { version: 1, reason: "Created vibes", actor: { kind: "system" } },
+    ]);
+    const afterRepair = await person.usage();
+    expect(afterRepair.retained_bytes).toBeGreaterThan(
+      beforeRepair.retained_bytes,
+    );
+    expect(afterRepair.writes).toBe(beforeRepair.writes);
   } finally {
     await local.dispose();
   }

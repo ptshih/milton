@@ -1,6 +1,7 @@
 import type { CreateInput, UpdateInput, ArchiveInput } from "./writes";
 import type { ToolResult } from "../tools";
 import { StoreError, type TenantStore } from "./index";
+import { isVibesTemplate } from "../vibe-check";
 
 export function storeResult(value: unknown, isError = false): ToolResult {
   return {
@@ -58,14 +59,13 @@ export function createStoreRecipeTools(store: TenantStore) {
       });
     },
     get_vibes() {
-      return run(async () =>
-        storeResult(
-          (await store.getVibes()) ?? {
-            recipe: null,
-            message: "No active vibes recipe is available.",
-          },
-        ),
-      );
+      return run(async () => {
+        const recipe = await store.getVibes();
+        return storeResult({
+          ...recipe,
+          is_template: isVibesTemplate(recipe.text),
+        });
+      });
     },
     search(words: string, cursor?: string) {
       return run(async () => {

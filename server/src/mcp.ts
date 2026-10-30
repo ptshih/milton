@@ -6,9 +6,10 @@ import { StoreError, type TenantStore } from "./store";
 import { createStoreRecipeTools, storeResult } from "./store/tools";
 
 import { createInput, updateInput, archiveInput } from "./store/writes";
+import { vibeCheckGuide } from "./vibe-check";
 
 export const storeInstructions =
-  "Before writing anything for or as the person, call get_vibes and the recipe that fits the task. When the person states a durable preference, save it with update_recipe and say what you changed. After a conflict or a person’s revert, read the current recipe before attempting another write.";
+  "Before writing anything for or as the person, call get_vibes and the recipe that fits the task. If get_vibes returns is_template: true, the person's vibes are not set up yet; if you have not offered a vibe check in this conversation, briefly offer one once. Do not repeat the offer if the person declines, skips it, or changes the subject. If they agree or explicitly ask for a vibe check, call vibe_check and follow its guide; show the draft and save it only after they approve that draft. Do not offer a vibe check when get_vibes returns customized content. Outside a vibe check, when the person states a durable preference, save it with update_recipe and say what you changed. After a conflict or a person’s revert, read the current recipe before attempting another write.";
 
 export interface ToolCall {
   client: string;
@@ -121,10 +122,12 @@ export function createMiltonServer(
     "get_vibes",
     {
       description: store
-        ? "Read your active vibes recipe and its version."
+        ? "Read your vibes recipe and its version, creating it if missing."
         : "Read Peter's vibes recipe, or learn that it is not published yet.",
       inputSchema: z.object({}),
-      annotations,
+      annotations: store
+        ? { ...annotations, readOnlyHint: false }
+        : annotations,
     },
     async () => tools.get_vibes(),
   );
@@ -144,6 +147,16 @@ export function createMiltonServer(
     async (args) => tools.search(args.words, pageInput.parse(args).cursor),
   );
   if (store) {
+    server.registerTool(
+      "vibe_check",
+      {
+        description:
+          "Return questions and drafting instructions for preparing a vibes recipe. This tool does not save changes.",
+        inputSchema: z.object({}),
+        annotations,
+      },
+      async () => ({ content: [{ type: "text", text: vibeCheckGuide }] }),
+    );
     const writes = createStoreRecipeTools(store);
     const mutating = {
       readOnlyHint: false,

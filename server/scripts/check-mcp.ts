@@ -19,7 +19,7 @@ export async function checkMcp(client: Client, store = false) {
     "get_vibes",
     "list_recipes",
     "search",
-    ...(store ? ["update_recipe"] : []),
+    ...(store ? ["update_recipe", "vibe_check"] : []),
   ]);
   for (const call of [
     { name: "list_recipes", arguments: {} },
@@ -34,7 +34,7 @@ export async function checkMcp(client: Client, store = false) {
       `${call.name} returned no content`,
     );
   }
-  return `initialize: instructions present; tools: ${store ? "exactly seven" : "exactly four"}; calls: four answered`;
+  return `initialize: instructions present; tools: ${store ? "exactly eight" : "exactly four"}; calls: four answered`;
 }
 
 if (import.meta.main) {

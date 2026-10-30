@@ -14,7 +14,7 @@ import {
   type UpdateInput,
   type ArchiveInput,
 } from "./writes";
-import { versionTag } from "./versions";
+import { parseVersionTag, versionTag } from "./versions";
 export { StoreError } from "./errors";
 
 export interface StoreBindings {
@@ -243,9 +243,10 @@ export interface TenantStore {
   listRecipes(
     cursor?: string,
     archived?: boolean,
+    excludeVibes?: boolean,
   ): Promise<StorePage<RecipeSummary>>;
   getRecipe(name: string): Promise<RecipeSnapshot | null>;
-  getVibes(): Promise<RecipeSnapshot | null>;
+  getVibes(): Promise<RecipeSnapshot>;
   search(words: string, cursor?: string): Promise<StorePage<SearchHit>>;
   chargeToolCall(): Promise<CallAllowance>;
 }
@@ -347,7 +348,7 @@ export async function storeForCurrentRequest(
     WHERE r.user_id = ${userId} AND v.version = (SELECT max(current.version) FROM recipe_versions current
       WHERE current.user_id = r.user_id AND current.recipe_id = r.id)
     AND EXISTS (SELECT 1 FROM users u WHERE u.id = ${userId} AND u.status = 'active')`;
-  async function getRecipe(name: string) {
+  async function getRecipe(name: string, session: StoreSession = db) {
     if (
       !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) ||
       utf8Bytes(name) > limits.name_bytes
@@ -358,7 +359,7 @@ export async function storeForCurrentRequest(
         400,
       );
     const row = (
-      await db.query<SnapshotRow>(
+      await session.query<SnapshotRow>(
         sql`SELECT r.id, r.name, v.description, v.body, v.version, v.archived ${currentSnapshot} AND r.name = ${name}`,
       )
     )[0];
@@ -376,24 +377,62 @@ export async function storeForCurrentRequest(
           }
         : undefined,
     ),
-    async listRecipes(cursor, archived = false) {
-      const after = readCursor(cursor, "list", String(archived));
+    async listRecipes(cursor, archived = false, excludeVibes = false) {
+      const query = excludeVibes ? `${archived}:recipes` : String(archived);
+      const after = readCursor(cursor, "list", query);
       const rows =
         await db.query<SummaryRow>(sql`SELECT r.id, r.name, v.description, v.version ${currentSnapshot}
-        AND v.archived = ${archived} AND r.name > ${after} ORDER BY r.name LIMIT ${limits.page_size + 1}`);
+        AND v.archived = ${archived} AND (${!excludeVibes} OR r.name <> 'vibes') AND r.name > ${after} ORDER BY r.name LIMIT ${limits.page_size + 1}`);
       const items = rows.slice(0, limits.page_size).map(summary);
       return {
         items,
         next_cursor:
           rows.length > limits.page_size
-            ? nextCursor("list", items.at(-1)!.name, String(archived))
+            ? nextCursor("list", items.at(-1)!.name, query)
             : null,
       };
     },
     getRecipe,
     async getVibes() {
       const recipe = await getRecipe("vibes");
-      return recipe?.archived ? null : recipe;
+      if (recipe && !recipe.archived) return recipe;
+      return db
+        .transaction(async (tx) => {
+          if (
+            !(
+              await tx.query(
+                sql`SELECT id FROM users WHERE id=${userId} AND status='active' FOR UPDATE`,
+              )
+            ).length
+          )
+            throw new StoreError(
+              "account_unavailable",
+              "This Milton account is unavailable.",
+              403,
+            );
+          // Serialize repairs with ordinary writes, then recheck under the tenant lock.
+          const current = await getRecipe("vibes", tx);
+          if (current && !current.archived) return current;
+          if (current) {
+            const tag = parseVersionTag(current.version)!;
+            await tx.query(sql`INSERT INTO recipe_versions (user_id,recipe_id,version,description,body,archived,reason,actor_json,details_json)
+            VALUES (${userId},${tag.id},${tag.number + 1},${current.description},${current.text},false,'Restored vibes','{"kind":"system"}',${JSON.stringify({ kind: "restore", source_version: tag.number })})`);
+            return (await getRecipe("vibes", tx))!;
+          }
+          await tx.query(
+            sql`INSERT INTO recipes (user_id,name) VALUES (${userId},'vibes') ON CONFLICT (user_id,name) DO NOTHING`,
+          );
+          const description =
+            templates.find((item) => item.name === "vibes")?.description ??
+            "How you want your assistants to work with you.";
+          await tx.query(sql`INSERT INTO recipe_versions (user_id,recipe_id,version,description,body,reason,actor_json,details_json)
+          SELECT ${userId},id,1,${description},'','Created vibes','{"kind":"system"}','{"kind":"create"}'
+          FROM recipes WHERE user_id=${userId} AND name='vibes'`);
+          return (await getRecipe("vibes", tx))!;
+        })
+        .catch((error) => {
+          throw databaseFailure(error);
+        });
     },
     async search(words, cursor) {
       const query = words.trim().toLowerCase();
@@ -553,7 +592,7 @@ export async function personStoreForCurrentRequest(
           tool_calls: number;
           writes: number;
         }>(sql`
-        SELECT u.retained_bytes,(SELECT count(*)::integer FROM recipes r WHERE r.user_id=u.id) AS recipes,
+        SELECT u.retained_bytes,(SELECT count(*)::integer FROM recipes r WHERE r.user_id=u.id AND r.name <> 'vibes') AS recipes,
         coalesce(d.tool_calls,0)::integer AS tool_calls,coalesce(d.writes,0)::integer AS writes
         FROM users u LEFT JOIN usage_daily d ON d.user_id=u.id AND d.day_utc=(clock_timestamp() AT TIME ZONE 'UTC')::date
         WHERE u.id=${userId} AND u.status='active'`)
