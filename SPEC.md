@@ -288,7 +288,7 @@ isolation, concurrent edits with conflicts, retries, revert, archive, delete and
 Neon is already on a paid plan (Peter, 2026-10-29), and the server runs on an existing Vercel plan, so
 sign-ups add no new bill. Workers Paid is not needed: the Worker and its key-value store retire with
 the moves to Neon Auth and Vercel, both before sign-ups open.
-Initial sign-up cap: 50 users.
+No sign-up cap on the hosted service (Peter, 2026-10-30): production sets the cap to the maximum; sign-ups stay on the allow-list until launch. New self-hosted installs default to 50.
 
 ### Sign-in moves to Neon Auth
 
