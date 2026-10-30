@@ -10,7 +10,7 @@ landed and the item is still open), `blocked: <why or #id>`. A bolded headline o
 or fewer states the task; one item is one landing. **A section heading and its preamble are
 shared context for every item beneath it.**
 
-**next-id: 6.** Ids are never reused, so this counter survives deleting the newest item.
+**next-id: 7.** Ids are never reused, so this counter survives deleting the newest item.
 
 ## MVP
 
@@ -52,3 +52,8 @@ connected assistant read and write; nothing here blocks the cutover.
       own drafts before showing them. It judges drafts against rules, never the person. A
       Milton-side judge on the page (model cost, abuse limits) is deliberately later. Ships after
       the write tools.
+
+- [ ] #6 (site, low) **Give Milton a Hawaiian shirt on Fridays.** Peter’s idea, 2026-10-30:
+      the Milton logo/icon wears a Hawaiian shirt every Friday, as an Office Space nod.
+      Before implementation, choose which time zone defines Friday and how the shirt reads
+      at small icon sizes. The ordinary mark returns on other days.
