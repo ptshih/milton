@@ -109,6 +109,12 @@ export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
             403,
           );
         const limits = await readLimits(tx);
+        if (input.name === "vibes" && (kind === "archive" || kind === "delete"))
+          throw new StoreError(
+            "vibes_required",
+            "Your vibes can be edited and reverted, not archived or deleted.",
+            422,
+          );
         const fields: [string, number, string][] = [
           [input.name, Math.min(64, limits.name_bytes), "name"],
         ];
@@ -147,7 +153,7 @@ export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
             { current: row ? headSnapshot(row) : null },
           );
         if (kind === "create") {
-          if (row) throw conflict();
+          if (row || input.name === "vibes") throw conflict();
         } else {
           if (!row)
             throw new StoreError(
@@ -238,11 +244,13 @@ export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
             ? input.description
             : source!.description;
         const archived =
-          kind === "archive"
-            ? true
-            : kind === "restore" || kind === "create"
-              ? false
-              : source!.archived;
+          input.name === "vibes"
+            ? false
+            : kind === "archive"
+              ? true
+              : kind === "restore" || kind === "create"
+                ? false
+                : source!.archived;
         const reason =
           kind === "create"
             ? "Created recipe"

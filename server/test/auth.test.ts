@@ -299,7 +299,13 @@ test("Neon server adapter preserves signed queries, cookies, sign-in admission a
       ).status,
     ).toBe(400);
     const home = await send("/");
-    expect(await home.text()).toContain("Your recipes");
+    const homeHtml = await home.text();
+    expect(homeHtml).toContain("<h1>Your vibes</h1>");
+    expect(homeHtml).toContain("<h2>Your recipes</h2>");
+    expect(homeHtml.indexOf('href="/recipes/vibes"')).toBeLessThan(
+      homeHtml.indexOf("<h2>Your recipes</h2>"),
+    );
+    expect(homeHtml.match(/href="\/recipes\/vibes"/g)).toHaveLength(1);
     expect((await send("/?result=constructor")).status).toBe(200);
     expect((await send("/new-recipe")).status).toBe(200);
     const browserPost = async (
@@ -374,6 +380,39 @@ test("Neon server adapter preserves signed queries, cookies, sign-in admission a
       subject: "neon-browser",
     });
     const person = await personStoreForCurrentRequest(local.env, account);
+    const vibesHtml = await (await send("/recipes/vibes")).text();
+    expect(vibesHtml).not.toContain("Archive recipe");
+    expect(vibesHtml).not.toContain("Delete recipe");
+    expect(vibesHtml).not.toContain('name="name"');
+    expect(vibesHtml).toContain("Version history");
+    for (const action of ["archive", "delete"]) {
+      const refused = await browserPost(`/recipes/vibes/${action}`, {
+        expected_version: /name="expected_version" value="([^"]+)"/.exec(
+          vibesHtml,
+        )![1]!,
+        recipe_id: /name="recipe_id" value="([^"]+)"/.exec(vibesHtml)![1]!,
+        ...(action === "archive"
+          ? { reason: "Archive" }
+          : { confirmation: "vibes" }),
+      });
+      expect(refused.status).toBe(422);
+      expect(await refused.text()).toContain(
+        "Your vibes can be edited and reverted, not archived or deleted.",
+      );
+    }
+    for (const path of ["/", "/recipes/vibes"]) {
+      await local.db.query(
+        sql`DELETE FROM recipes WHERE user_id=${account.userId} AND name='vibes'`,
+      );
+      expect((await send(path)).status).toBe(200);
+      expect(await person.getRecipe("vibes")).toMatchObject({
+        text: "",
+        archived: false,
+      });
+      expect((await person.history("vibes")).items).toMatchObject([
+        { version: 1, reason: "Created vibes", actor: { kind: "system" } },
+      ]);
+    }
     const assistant = await storeForCurrentRequest(local.env, account, {
       issuer,
       clientId: "fixture",
