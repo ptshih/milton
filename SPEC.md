@@ -221,7 +221,7 @@ as text, never as HTML.
 A Milton user has an immutable id of its own, with no colon in it, and one or more identities:
 `github` with GitHub's numeric id today, `google` with Google's `sub` later, never an email address.
 The registry maps (provider, subject) to a user uniquely and transactionally: concurrent first
-sign-ins cannot create two accounts, link one identity to two users, or pass the sign-up cap; seeding
+sign-ins cannot create two accounts or link one identity to two users; seeding
 the templates is repeatable. The OAuth provider's token carries the Milton user id, and every tool
 reads the caller from it. Sign-in is split in two: the provider step proves an identity; the account
 step looks it up or admits it. A second identity is linked only by a signed-in user from the page,
@@ -288,7 +288,7 @@ isolation, concurrent edits with conflicts, retries, revert, archive, delete and
 Neon is already on a paid plan (Peter, 2026-10-29), and the server runs on an existing Vercel plan, so
 sign-ups add no new bill. Workers Paid is not needed: the Worker and its key-value store retire with
 the moves to Neon Auth and Vercel, both before sign-ups open.
-No sign-up cap on the hosted service (Peter, 2026-10-30): production sets the cap to the maximum; sign-ups stay on the allow-list until launch. New self-hosted installs default to 50.
+No sign-up cap anywhere, hosted or self-hosted (Peter, 2026-10-30). Admission modes remain closed, allow-list, or open; fresh installs default to closed.
 
 ### Sign-in moves to Neon Auth
 
@@ -300,7 +300,7 @@ project beside the recipes; GitHub login is a provider toggle there, Google anot
 becomes a resource server: it checks each access token's signature, issuer and audience and reads
 the user from it; the OAuth provider library, the KV namespace, the GitHub upstream code and the
 consent handshake go. Milton hosts the two pages Neon does not provide, login and consent, on the
-Worker, in Milton's look. Admission and the sign-up cap stay in Milton, keyed on the Neon user id.
+Worker, in Milton's look. Admission stays in Milton, keyed on the Neon user id.
 Every client re-authorizes once. The previous sign-in code stays in git as the fallback while the
 beta settles.
 
@@ -331,7 +331,7 @@ Production cuts over once, after the store, Neon Auth and the Vercel move are al
 3. Reads switch to the store. Version 1 tokens carry a GitHub id and not a Milton user id, so they
    stop working and clients re-authorize once; the bundle is removed only after reads are verified.
 4. Write tools, history and revert, enabled only once the page's revert works.
-5. Privacy policy and terms pages on `meetmilton.com` (done 2026-10-30; Google brand verified, so its screen says "continue to Milton"); sign-ups opened under the cap; onboarding on `meetmilton.com`.
+5. Privacy policy and terms pages on `meetmilton.com` (done 2026-10-30; Google brand verified, so its screen says "continue to Milton"); sign-ups opened; onboarding on `meetmilton.com`.
 
 There is no rollback plan (Peter, 2026-10-29): once the Vercel deployment is verified, the retired pieces (Worker, KV, Wrangler configuration, old sign-in code) are deleted as the work moves on. A disaster restore uses Neon's point-in-time history and names its recovery point. Neither redeploys the bundled recipes over newer writes.
 

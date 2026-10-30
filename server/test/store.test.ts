@@ -91,7 +91,7 @@ test("Postgres migrations are atomic and contain only the six application tables
           "SELECT count(*)::integer AS n FROM drizzle.__drizzle_migrations",
         )
       ).rows,
-    ).toEqual([{ n: 3 }]);
+    ).toEqual([{ n: 4 }]);
     expect(
       (
         await pg.query<{ tablename: string }>(
@@ -374,16 +374,17 @@ test("identity lookup never admits or seeds an MCP caller", async () => {
   const local = await localStore();
   const identity = { provider: "neon", subject: "lookup-fixture" };
   try {
-    await local.db.query(
-      sql`UPDATE store_config SET signup_mode='open', signup_cap=2`,
-    );
+    await expect(
+      resolveIdentityAccount(local.env, identity),
+    ).rejects.toMatchObject({ code: "admission_refused", status: 403 });
+    await local.db.query(sql`UPDATE store_config SET signup_mode='open'`);
     await expect(
       lookupIdentityAccount(local.env, identity),
     ).rejects.toMatchObject({ code: "account_unavailable", status: 403 });
     expect(
       await local.db.query(sql`SELECT count(*)::integer AS n FROM users`),
     ).toEqual([{ n: 0 }]);
-    // Preserve the admission/cap/rollback coverage from the retired Worker fixture.
+    // Preserve concurrent admission, repeatable seeding, and failed-admission rollback.
     const same = await Promise.all([
       resolveIdentityAccount(local.env, identity),
       resolveIdentityAccount(local.env, identity),
@@ -398,7 +399,7 @@ test("identity lookup never admits or seeds an MCP caller", async () => {
         sql`SELECT count(*)::integer AS n FROM recipe_versions`,
       ),
     ).toEqual([{ n: 2 }]);
-    const lastSlot = await Promise.allSettled([
+    const concurrent = await Promise.allSettled([
       resolveIdentityAccount(local.env, {
         provider: "neon",
         subject: "second-fixture",
@@ -408,16 +409,10 @@ test("identity lookup never admits or seeds an MCP caller", async () => {
         subject: "third-fixture",
       }),
     ]);
-    expect(lastSlot.map((result) => result.status).sort()).toEqual([
+    expect(concurrent.map((result) => result.status)).toEqual([
       "fulfilled",
-      "rejected",
+      "fulfilled",
     ]);
-    for (const result of lastSlot)
-      if (result.status === "rejected")
-        expect(result.reason).toMatchObject({
-          code: "admission_refused",
-          status: 403,
-        });
     await local.db.query(sql`UPDATE store_config SET signup_mode='closed'`);
     expect(
       (await resolveIdentityAccount(local.env, identity)).miltonUserId,
@@ -426,9 +421,9 @@ test("identity lookup never admits or seeds an MCP caller", async () => {
       await local.db.query(
         sql`SELECT count(*)::integer AS n FROM recipe_versions`,
       ),
-    ).toEqual([{ n: 4 }]);
+    ).toEqual([{ n: 6 }]);
     await local.db.query(
-      sql`UPDATE store_config SET signup_mode='open', signup_cap=3, limits_json=limits_json || '{"body_bytes":1}'::jsonb`,
+      sql`UPDATE store_config SET signup_mode='open', limits_json=limits_json || '{"body_bytes":1}'::jsonb`,
     );
     await expect(
       resolveIdentityAccount(local.env, {
@@ -438,10 +433,10 @@ test("identity lookup never admits or seeds an MCP caller", async () => {
     ).rejects.toMatchObject({ code: "recipe_body_limit", status: 422 });
     expect(
       await local.db.query(sql`SELECT count(*)::integer AS n FROM users`),
-    ).toEqual([{ n: 2 }]);
+    ).toEqual([{ n: 3 }]);
     expect(
       await local.db.query(sql`SELECT count(*)::integer AS n FROM identities`),
-    ).toEqual([{ n: 2 }]);
+    ).toEqual([{ n: 3 }]);
     expect(
       await local.db.query(
         sql`SELECT count(*)::integer AS n FROM users u WHERE NOT EXISTS (SELECT 1 FROM identities i WHERE i.user_id=u.id)`,
@@ -460,7 +455,7 @@ test("identity lookup never admits or seeds an MCP caller", async () => {
       await local.db.query(
         sql`SELECT count(*)::integer AS n FROM recipe_versions`,
       ),
-    ).toEqual([{ n: 4 }]);
+    ).toEqual([{ n: 6 }]);
   } finally {
     await local.dispose();
   }

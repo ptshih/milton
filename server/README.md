@@ -61,9 +61,11 @@ bun run db:migrate
 
 This command explicitly reads `.dev.vars`. It does not use `.env.local` or an inherited `DATABASE_URL`. It checks the database name and owner role, then applies pending migrations and records them in the Drizzle journal. Rerunning it applies only migrations that have not completed. Run one migration process at a time.
 
-The migrations create six application tables: `store_config`, `users`, `identities`, `recipes`, `recipe_versions`, and `usage_daily`. A fresh installation starts with sign-ups **closed** and a cap of **50 Milton accounts**. Running migrations alone does not admit your first user.
+The migrations create six application tables: `store_config`, `users`, `identities`, `recipes`, `recipe_versions`, and `usage_daily`. A fresh installation starts with sign-ups **closed**, with no account-count cap. Running migrations alone does not admit your first user.
 
 Apply migrations before deploying code that needs them. Existing recipe snapshots and retained-byte accounting are preserved by migration 0002, which strengthens the recovery guard without adding tables or backfilling data.
+
+Migration 0003 removes the sign-up cap column and its constraint for both hosted and self-hosted installations. It preserves the admission mode and allow-list.
 
 ## Deploy
 
@@ -75,7 +77,7 @@ Check `/health` on your deployment and open `/login` on the browser app origin. 
 
 ## Admit the first user
 
-Neon sign-in and Milton admission are separate. With the default closed configuration, a successful social sign-in can create a Neon Auth user but end with “New Milton accounts are closed or full.” (`admission_refused`) in Milton. Existing admitted users can still sign in when new sign-ups are closed or the cap is full.
+Neon sign-in and Milton admission are separate. With the default closed configuration, a successful social sign-in can create a Neon Auth user but end with “New Milton accounts are closed.” (`admission_refused`) in Milton. Existing admitted users can still sign in when new sign-ups are closed.
 
 Choose one admission mode. Run the SQL in Neon's SQL editor against the `milton` database.
 
@@ -92,26 +94,24 @@ SET signup_mode = 'allowlist',
         'subject', 'YOUR_NEON_AUTH_USER_ID'
       )
     ),
-    signup_cap = 50,
     updated_at = now()
 WHERE singleton = 1;
 ```
 
 This replaces the allow-list with that one identity. To admit more people, include an object with `provider` and `subject` for each Neon Auth user. Return to `/login` after applying the update to finish admission.
 
-### Allow new users up to the cap
+### Allow new users
 
 To accept anyone who can complete your configured social sign-in:
 
 ```sql
 UPDATE store_config
 SET signup_mode = 'open',
-    signup_cap = 50,
     updated_at = now()
 WHERE singleton = 1;
 ```
 
-You can apply this before anyone signs in. Change `signup_cap` to the maximum number of Milton accounts you want. The cap applies to Milton accounts, not to users who exist only in Neon Auth. Setting `signup_mode` back to `closed` stops new admissions without locking out existing users.
+You can apply this before anyone signs in. There is no account-count cap. Setting `signup_mode` back to `closed` stops new admissions without locking out existing users.
 
 The first admitted sign-in creates a Milton user and two starter recipes, `email-voice` and `vibes`, containing headings. Edit them on the page or import your own instructions.
 
