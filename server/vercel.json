@@ -17,15 +17,19 @@
       "destination": "/api/index"
     },
     {
-      "source": "/new-recipe",
+      "source": "/tps-report",
       "destination": "/api/index"
     },
     {
-      "source": "/recipes",
+      "source": "/tps-report/:path*",
       "destination": "/api/index"
     },
     {
-      "source": "/recipes/:path*",
+      "source": "/memos",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/memos/:path*",
       "destination": "/api/index"
     },
     {

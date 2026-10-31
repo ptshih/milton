@@ -2,15 +2,15 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export interface Recipe {
+export interface Memo {
   name: string;
   description: string;
   text: string;
 }
 
-// Recipes use two single-line fields, including plain descriptions with colons.
+// Memos use two single-line fields, including plain descriptions with colons.
 // Keep the original Markdown intact when serving it.
-export function parseRecipe(folder: string, text: string): Recipe {
+export function parseMemo(folder: string, text: string): Memo {
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(text);
   if (!match) throw new Error(`${folder}: missing frontmatter`);
   const fields = new Map<string, string>();
@@ -56,10 +56,10 @@ export function parseRecipe(folder: string, text: string): Recipe {
   return { name, description, text };
 }
 
-export async function loadRecipes(directory: string | URL): Promise<Recipe[]> {
+export async function loadMemos(directory: string | URL): Promise<Memo[]> {
   const root = directory instanceof URL ? fileURLToPath(directory) : directory;
   const entries = await readdir(root, { withFileTypes: true });
-  const recipes: Recipe[] = [];
+  const memos: Memo[] = [];
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     if (!entry.isDirectory()) continue;
     let text: string;
@@ -70,7 +70,7 @@ export async function loadRecipes(directory: string | URL): Promise<Recipe[]> {
         continue;
       throw error;
     }
-    recipes.push(parseRecipe(entry.name, text));
+    memos.push(parseMemo(entry.name, text));
   }
-  return recipes;
+  return memos;
 }

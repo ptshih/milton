@@ -35,7 +35,7 @@ export function runtimeConfig(
       issuer.href.endsWith("/") ||
       !env.NEON_AUTH_COOKIE_SECRET ||
       env.NEON_AUTH_COOKIE_SECRET.length < 32 ||
-      (env.RECIPES_SOURCE && env.RECIPES_SOURCE !== "store")
+      (env.MEMOS_SOURCE && env.MEMOS_SOURCE !== "store")
     )
       throw new Error();
     return {
@@ -44,7 +44,7 @@ export function runtimeConfig(
       appOrigin: app.origin,
       cookieSecret: env.NEON_AUTH_COOKIE_SECRET,
       DATABASE_URL: env.DATABASE_URL,
-      RECIPES_SOURCE: "store",
+      MEMOS_SOURCE: "store",
     };
   } catch {
     throw new StoreError(

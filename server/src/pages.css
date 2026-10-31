@@ -103,21 +103,21 @@ summary {
   cursor: pointer;
   padding-block: 0.5rem;
 }
-.recipe-list,
+.memo-list,
 .history {
   list-style: none;
   padding: 0;
 }
-.recipe-list li,
+.memo-list li,
 .history li {
   border-bottom: 1px solid var(--hairline);
   padding-block: 1.25rem;
   overflow-wrap: anywhere;
 }
-.recipe-list li > a {
+.memo-list li > a {
   font-weight: 650;
 }
-.recipe-list span {
+.memo-list span {
   display: block;
   margin-top: 0.5rem;
   color: var(--muted);
@@ -128,4 +128,25 @@ summary {
     margin-block: 1.5rem;
     padding: 1.25rem;
   }
+}
+
+.tps-sheet {
+  border: 1px solid var(--hairline);
+  padding: 1.25rem;
+}
+.memo-metadata {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.5rem 1rem;
+  line-height: 1.6;
+}
+.memo-metadata dt {
+  font-weight: 650;
+}
+.memo-metadata dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+aside {
+  margin-top: 2rem;
 }

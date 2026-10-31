@@ -1,42 +1,51 @@
 import { expect, test } from "bun:test";
-import { loadRecipes } from "../src/recipes";
-import { createRecipeTools } from "../src/tools";
+import { loadMemos } from "../src/memos";
+import { createMemoTools } from "../src/tools";
 
-test("the four read tools serve only published recipes", async () => {
-  const recipes = [
-    ...(await loadRecipes(new URL("../../templates/", import.meta.url))),
+test("the four read tools serve only published memos", async () => {
+  const memos = [
+    ...(await loadMemos(new URL("../../templates/", import.meta.url))),
     {
       name: "fixture-extra",
-      description: "An additional fixture recipe.",
-      text: "A third recipe.",
+      description: "An additional fixture memo.",
+      text: "A third memo.",
     },
   ];
-  const tools = createRecipeTools(recipes);
-  const list = tools.list_recipes();
+  const tools = createMemoTools(memos);
+  const list = tools.list_memos();
   expect(list.isError).not.toBe(true);
   expect(JSON.parse(list.content[0]!.text)).toEqual(
-    recipes.map(({ name, description }) => ({ name, description })),
+    memos
+      .filter(({ name }) => name !== "vibes")
+      .map(({ name, description }) => ({ name, description })),
   );
-  const names = recipes.map((recipe) => recipe.name);
-  expect(names).toContain("email-voice");
+  const names = memos.map((memo) => memo.name);
+  expect(names).not.toContain("email-voice");
   expect(names).toContain("vibes");
-  expect(tools.get_recipe("email-voice").content[0]!.text).toBe(
-    recipes.find((recipe) => recipe.name === "email-voice")!.text,
+  expect(tools.get_memo("fixture-extra").content[0]!.text).toBe(
+    "A third memo.",
   );
-  const missing = tools.get_recipe("missing");
+  expect(tools.get_memo("vibes").isError).toBe(true);
+  const missing = tools.get_memo("missing");
   expect(missing.isError).toBe(true);
-  expect(missing.content[0]!.text).toContain(
-    `Available recipes: ${names.join(", ")}`,
-  );
-  const preferences = tools.get_vibes();
-  const published = recipes.find((recipe) => recipe.name === "vibes");
+  expect(missing.content[0]!.text).toContain(`Available memos: fixture-extra`);
+  const preferences = tools.get_tps_report();
+  const published = memos.find((memo) => memo.name === "vibes");
   expect(published).toBeDefined();
-  expect(preferences.content[0]!.text).toBe(published!.text);
-  const matches = JSON.parse(tools.search("EMAIL VOICE").content[0]!.text);
-  expect(matches[0].name).toBe("email-voice");
+  expect(JSON.parse(preferences.content[0]!.text)).toEqual({
+    title: "TPS Report",
+    description: published!.description,
+    text: "",
+  });
+  expect(tools.search("vibes").content[0]!.text).toBe("[]");
+  expect(
+    JSON.parse(tools.search("TPS REPORT").content[0]!.text)[0],
+  ).toMatchObject({ kind: "tps_report", title: "TPS Report" });
+  const matches = JSON.parse(tools.search("THIRD MEMO").content[0]!.text);
+  expect(matches[0].name).toBe("fixture-extra");
   expect(matches[0].snippets.length).toBeGreaterThan(0);
   expect(matches[0].snippets.length).toBeLessThanOrEqual(3);
-  expect(matches[0].snippets[0].toLowerCase()).toContain("email voice");
+  expect(matches[0].snippets[0].toLowerCase()).toContain("third memo");
   expect(tools.search("[literal.no.match]").content[0]!.text).toBe("[]");
   expect(tools.search(" ").isError).toBe(true);
 });

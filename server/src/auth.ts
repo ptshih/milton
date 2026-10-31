@@ -18,7 +18,7 @@ import {
   guardStoreRequest,
   type VerifiedStoreAuth,
 } from "./store";
-import { recipePages, isRecipeRoute } from "./recipe-pages";
+import { memoPages, isMemoRoute } from "./memo-pages";
 import { AuthError } from "./token";
 import { escapeHtml as e, navigation, page } from "./pages";
 
@@ -305,7 +305,7 @@ export function browserPages(config: RuntimeConfig) {
       );
       return names;
     };
-    const renderRecipes = async (account?: VerifiedStoreAuth) => {
+    const renderMemos = async (account?: VerifiedStoreAuth) => {
       const verified =
         account ?? (await lookupIdentityAccount(config, await identity()));
       const store = await personStoreForCurrentRequest(config, verified);
@@ -313,16 +313,16 @@ export function browserPages(config: RuntimeConfig) {
       if (request.method === "POST") {
         const bounded = await guardStoreRequest(request, {
           ...config,
-          RECIPES_SOURCE: "store",
+          MEMOS_SOURCE: "store",
         });
         if (bounded instanceof Response) return bounded;
         form = Object.fromEntries(await readForm(true, bounded));
       }
-      return recipePages(request, store, csrfField, clientNames, form);
+      return memoPages(request, store, csrfField, clientNames, form);
     };
     const perform = async (): Promise<Response> => {
-      if (isRecipeRoute(url.pathname) && url.pathname !== "/")
-        return renderRecipes();
+      if (isMemoRoute(url.pathname) && url.pathname !== "/")
+        return renderMemos();
       if (!["/", "/login", "/consent", "/logout"].includes(url.pathname))
         return page("Not found", "<p>This page does not exist.</p>", 404);
       if (
@@ -374,10 +374,10 @@ export function browserPages(config: RuntimeConfig) {
           const user = await session();
           if (!user)
             return page(
-              "Your recipes, in every assistant",
+              "Your memos, in every assistant",
               '<p><a href="/login">Sign in to Milton</a></p>',
             );
-          return renderRecipes(
+          return renderMemos(
             await lookupIdentityAccount(config, {
               provider: "neon",
               subject: user.id,
@@ -458,7 +458,7 @@ export function browserPages(config: RuntimeConfig) {
         }
         return page(
           "Connect an assistant",
-          `<p><strong>${e(client.data.client_name || params.get("client_id")!)}</strong>${clientHost ? `, from ${e(clientHost)}` : " (name not verified)"}</p>${clientHost ? "" : "<p>Only allow this if you just started connecting it.</p>"}<p>This assistant will be able to read and change your recipes.</p><p>Return destination: ${e(destination)}</p><form method="post" action="/consent">${csrfField()}${hidden}<button name="decision" value="allow">Allow</button><button class="secondary" name="decision" value="deny">Deny</button></form>`,
+          `<p><strong>${e(client.data.client_name || params.get("client_id")!)}</strong>${clientHost ? `, from ${e(clientHost)}` : " (name not verified)"}</p>${clientHost ? "" : "<p>Only allow this if you just started connecting it.</p>"}<p>This assistant will be able to read and change your memos.</p><p>Return destination: ${e(destination)}</p><form method="post" action="/consent">${csrfField()}${hidden}<button name="decision" value="allow">Allow</button><button class="secondary" name="decision" value="deny">Deny</button></form>`,
         );
       }
       const form = await readForm();

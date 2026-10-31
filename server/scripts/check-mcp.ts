@@ -1,8 +1,9 @@
+import { z } from "zod";
 import { strict as assert } from "node:assert";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { loadRecipes } from "../src/recipes";
+import { loadMemos } from "../src/memos";
 import { createMiltonServer, storeInstructions } from "../src/mcp";
 
 export async function checkMcp(client: Client, store = false) {
@@ -10,31 +11,52 @@ export async function checkMcp(client: Client, store = false) {
     client.getInstructions(),
     store
       ? storeInstructions
-      : "Before writing anything for or as Peter, call get_vibes and the recipe that fits the task.",
+      : "Before working for or as the person, call get_tps_report and a relevant ordinary memo.",
   );
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((tool) => tool.name).sort(), [
-    ...(store ? ["archive_recipe", "create_recipe"] : []),
-    "get_recipe",
-    "get_vibes",
-    "list_recipes",
+    ...(store ? ["archive_memo", "create_memo"] : []),
+    "get_memo",
+    "get_tps_report",
+    "list_memos",
     "search",
-    ...(store ? ["update_recipe", "vibe_check"] : []),
+    ...(store ? ["tps_check", "update_memo", "update_tps_report"] : []),
   ]);
+  const listed = await client.callTool({ name: "list_memos", arguments: {} });
+  assert.notEqual(listed.isError, true, "list_memos returned an error");
+  const content = z
+    .object({
+      content: z
+        .array(z.object({ type: z.literal("text"), text: z.string() }))
+        .min(1),
+    })
+    .parse(listed);
+  const value: unknown = JSON.parse(content.content[0]!.text);
+  const entries = z.array(z.object({ name: z.string() }));
+  const memos = store
+    ? z.object({ memos: entries }).parse(value).memos
+    : entries.parse(value);
+  const first = memos[0]?.name;
   for (const call of [
-    { name: "list_recipes", arguments: {} },
-    { name: "get_recipe", arguments: { name: "email-voice" } },
-    { name: "get_vibes", arguments: {} },
-    { name: "search", arguments: { words: "Peter" } },
+    { name: "get_memo", arguments: { name: first ?? "milton-check-no-memo" } },
+    { name: "get_tps_report", arguments: {} },
+    { name: "search", arguments: { words: "TPS Report" } },
   ]) {
     const result = await client.callTool(call);
-    assert.notEqual(result.isError, true, `${call.name} returned an error`);
+    if (call.name === "get_memo" && !first)
+      assert.equal(
+        result.isError,
+        true,
+        "An empty ordinary list must refuse a missing memo",
+      );
+    else
+      assert.notEqual(result.isError, true, `${call.name} returned an error`);
     assert.ok(
       Array.isArray(result.content) && result.content.length > 0,
       `${call.name} returned no content`,
     );
   }
-  return `initialize: instructions present; tools: ${store ? "exactly eight" : "exactly four"}; calls: four answered`;
+  return `initialize: instructions present; tools: ${store ? "exactly nine" : "exactly four"}; calls: four answered`;
 }
 
 if (import.meta.main) {
@@ -53,7 +75,7 @@ if (import.meta.main) {
       );
     } else {
       server = createMiltonServer(
-        await loadRecipes(new URL("../../templates/", import.meta.url)),
+        await loadMemos(new URL("../../templates/", import.meta.url)),
         () => "milton-check",
       );
       const [clientTransport, serverTransport] =

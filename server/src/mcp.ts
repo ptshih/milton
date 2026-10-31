@@ -1,15 +1,20 @@
 import { McpServer, type Transport } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import type { Recipe } from "./recipes";
-import { createRecipeTools, type ReadRecipeTools } from "./tools";
+import type { Memo } from "./memos";
+import { createMemoTools, type ReadMemoTools } from "./tools";
 import { StoreError, type TenantStore } from "./store";
-import { createStoreRecipeTools, storeResult } from "./store/tools";
+import { createStoreMemoTools, storeResult } from "./store/tools";
 
-import { createInput, updateInput, archiveInput } from "./store/writes";
-import { vibeCheckGuide } from "./vibe-check";
+import {
+  createInput,
+  updateInput,
+  updateTpsReportInput,
+  archiveInput,
+} from "./store/writes";
+import { tpsCheckGuide } from "./tps-check";
 
 export const storeInstructions =
-  "Before writing anything for or as the person, call get_vibes and the recipe that fits the task. If get_vibes returns is_template: true, the person's vibes are not set up yet; if you have not offered a vibe check in this conversation, briefly offer one once. Do not repeat the offer if the person declines, skips it, or changes the subject. If they agree or explicitly ask for a vibe check, call vibe_check and follow its guide; show the draft and save it only after they approve that draft. Do not offer a vibe check when get_vibes returns customized content. Outside a vibe check, when the person states a durable preference, save it with update_recipe and say what you changed. After a conflict or a person’s revert, read the current recipe before attempting another write.";
+  "Before working for or as the person, call get_tps_report and a relevant ordinary memo. If get_tps_report returns is_template: true, TPS Report is not set up yet; if you have not offered TPS setup in this conversation, briefly offer it once. Do not repeat the offer if the person declines, skips it, or changes the subject. If they agree or ask for setup, call tps_check and follow its guide: use available explicit preferences first, ask useful follow-ups, and show the complete draft for approval before saving. Use the questionnaire when preferences are unavailable. Confirm only after a successful save; report failed, conflicting or uncertain outcomes honestly and never retry blindly. Do not offer setup when TPS Report is customized. Use update_tps_report for general working preferences and update_memo for task-specific instructions. After a conflict or a person’s restoration, read the current head before another write.";
 
 export interface ToolCall {
   client: string;
@@ -17,7 +22,7 @@ export interface ToolCall {
 }
 
 export function createMiltonServer(
-  recipes: readonly Recipe[],
+  memos: readonly Memo[],
   client: () => string,
   log: (call: ToolCall) => void = (call) => console.info(JSON.stringify(call)),
   store?: TenantStore,
@@ -63,7 +68,7 @@ export function createMiltonServer(
                         error instanceof StoreError
                           ? error.code
                           : "store_unavailable",
-                      message: "The recipe store is unavailable. Try again.",
+                      message: "The memo store is unavailable. Try again.",
                     },
                     true,
                   ),
@@ -80,12 +85,12 @@ export function createMiltonServer(
     {
       instructions: store
         ? storeInstructions
-        : "Before writing anything for or as Peter, call get_vibes and the recipe that fits the task.",
+        : "Before working for or as the person, call get_tps_report and a relevant ordinary memo.",
     },
   );
-  const tools: ReadRecipeTools = store
-    ? createStoreRecipeTools(store)
-    : createRecipeTools(recipes);
+  const tools: ReadMemoTools = store
+    ? createStoreMemoTools(store)
+    : createMemoTools(memos);
   const pageInput = z.object({ cursor: z.string().max(2048).optional() });
   const annotations = {
     readOnlyHint: true,
@@ -94,20 +99,20 @@ export function createMiltonServer(
     openWorldHint: false,
   };
   server.registerTool(
-    "list_recipes",
+    "list_memos",
     {
       description: store
-        ? "List active recipe names, descriptions and versions, with a continuation cursor."
-        : "List the name and description of every published recipe.",
+        ? "List active ordinary memo names, descriptions and versions, with a continuation cursor."
+        : "List the name and description of every published memo.",
       inputSchema: store ? pageInput : z.object({}),
       annotations,
     },
-    async (args) => tools.list_recipes(pageInput.parse(args).cursor),
+    async (args) => tools.list_memos(pageInput.parse(args).cursor),
   );
   server.registerTool(
-    "get_recipe",
+    "get_memo",
     {
-      description: "Read a complete recipe by name.",
+      description: "Read a complete active ordinary memo by name.",
       inputSchema: z.object({
         name: z
           .string()
@@ -116,26 +121,26 @@ export function createMiltonServer(
       }),
       annotations,
     },
-    async ({ name }) => tools.get_recipe(name),
+    async ({ name }) => tools.get_memo(name),
   );
   server.registerTool(
-    "get_vibes",
+    "get_tps_report",
     {
       description: store
-        ? "Read your vibes recipe and its version, creating it if missing."
-        : "Read Peter's vibes recipe, or learn that it is not published yet.",
+        ? "Read TPS Report and its version, creating it if missing."
+        : "Read the published TPS Report, or learn that it is not published yet.",
       inputSchema: z.object({}),
       annotations: store
         ? { ...annotations, readOnlyHint: false }
         : annotations,
     },
-    async () => tools.get_vibes(),
+    async () => tools.get_tps_report(),
   );
   server.registerTool(
     "search",
     {
       description:
-        "Find a literal phrase across recipes, ignoring case. Return up to three short snippets per recipe.",
+        "Find a literal phrase across memos, ignoring case. Return up to three short snippets per memo.",
       inputSchema: store
         ? z.object({
             words: z.string().trim().min(1).max(256),
@@ -148,16 +153,16 @@ export function createMiltonServer(
   );
   if (store) {
     server.registerTool(
-      "vibe_check",
+      "tps_check",
       {
         description:
-          "Return questions and drafting instructions for preparing a vibes recipe. This tool does not save changes.",
+          "Return questions and drafting instructions for preparing TPS Report. This tool does not save changes.",
         inputSchema: z.object({}),
         annotations,
       },
-      async () => ({ content: [{ type: "text", text: vibeCheckGuide }] }),
+      async () => ({ content: [{ type: "text", text: tpsCheckGuide }] }),
     );
-    const writes = createStoreRecipeTools(store);
+    const writes = createStoreMemoTools(store);
     const mutating = {
       readOnlyHint: false,
       destructiveHint: false,
@@ -165,34 +170,44 @@ export function createMiltonServer(
       openWorldHint: false,
     };
     server.registerTool(
-      "create_recipe",
+      "create_memo",
       {
         description:
-          "Create a recipe at version 1. An existing name is a conflict.",
+          "Create a memo at version 1. An existing name is a conflict.",
         inputSchema: createInput,
         annotations: mutating,
       },
-      async (args) => writes.create_recipe(args),
+      async (args) => writes.create_memo(args),
     );
     server.registerTool(
-      "update_recipe",
+      "update_memo",
       {
         description:
-          "Save a new version using the expected version tag from a read. A conflict returns the current recipe.",
+          "Save a new version using the expected version tag from a read. A conflict returns the current memo.",
         inputSchema: updateInput,
         annotations: mutating,
       },
-      async (args) => writes.update_recipe(args),
+      async (args) => writes.update_memo(args),
     );
     server.registerTool(
-      "archive_recipe",
+      "update_tps_report",
       {
         description:
-          "Archive a recipe using the expected version tag from a read.",
+          "Save TPS Report using its complete expected version tag. Empty text is valid.",
+        inputSchema: updateTpsReportInput,
+        annotations: mutating,
+      },
+      async (args) => writes.update_tps_report(args),
+    );
+    server.registerTool(
+      "archive_memo",
+      {
+        description:
+          "Archive a memo using the expected version tag from a read.",
         inputSchema: archiveInput,
         annotations: mutating,
       },
-      async (args) => writes.archive_recipe(args),
+      async (args) => writes.archive_memo(args),
     );
   }
   return server;

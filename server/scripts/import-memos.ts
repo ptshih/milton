@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
-import { loadRecipes, parseRecipe } from "../src/recipes";
+import { loadMemos, parseMemo } from "../src/memos";
 import { readLimits, StoreError, utf8Bytes } from "../src/store";
 import {
   neonDatabase,
@@ -23,11 +23,11 @@ export interface ImportSource {
 class ImportError extends Error {}
 
 export function parseImportSource(name: string, text: string): ImportSource {
-  const recipe = parseRecipe(name, text);
+  const memo = parseMemo(name, text);
   const prefix = /^---\r?\n[\s\S]*?\r?\n---\r?\n/.exec(text)![0];
   return {
-    name: recipe.name,
-    description: recipe.description,
+    name: memo.name,
+    description: memo.description,
     body: text.slice(prefix.length),
     prefix,
     bytes: new TextEncoder().encode(text),
@@ -37,14 +37,12 @@ export function parseImportSource(name: string, text: string): ImportSource {
 export async function loadImportSources(
   directory: URL,
 ): Promise<ImportSource[]> {
-  const recipes = await loadRecipes(directory);
+  const memos = await loadMemos(directory);
   return Promise.all(
-    recipes.map(async (recipe) => {
-      const bytes = await readFile(
-        new URL(`${recipe.name}/SKILL.md`, directory),
-      );
+    memos.map(async (memo) => {
+      const bytes = await readFile(new URL(`${memo.name}/SKILL.md`, directory));
       const source = parseImportSource(
-        recipe.name,
+        memo.name,
         new TextDecoder("utf-8", { fatal: true }).decode(bytes),
       );
       return { ...source, bytes };
@@ -83,7 +81,7 @@ export function verifyImportedSource(
 
 interface CommittedSource {
   source: ImportSource;
-  recipeId: string;
+  memoId: string;
   version: number;
 }
 const importedDetails = z.object({
@@ -97,7 +95,7 @@ async function verifySnapshots(
   committed: CommittedSource[],
 ) {
   const results: { name: string; version: number; bytes: number }[] = [];
-  for (const { source, recipeId, version } of committed) {
+  for (const { source, memoId, version } of committed) {
     const row = (
       await db.query<{
         name: string;
@@ -105,9 +103,9 @@ async function verifySnapshots(
         body: string;
         details_json: string;
       }>(sql`
-      SELECT r.name,v.description,v.body,v.details_json FROM recipes r JOIN recipe_versions v
-      ON v.user_id = r.user_id AND v.recipe_id = r.id JOIN users u ON u.id = r.user_id
-      WHERE r.user_id = ${userId} AND r.id = ${recipeId} AND v.version = ${version} AND u.status = 'active'`)
+      SELECT r.name,v.description,v.body,v.details_json FROM memos r JOIN memo_versions v
+      ON v.user_id = r.user_id AND v.memo_id = r.id JOIN users u ON u.id = r.user_id
+      WHERE r.user_id = ${userId} AND r.id = ${memoId} AND v.version = ${version} AND u.status = 'active'`)
     )[0];
     if (!row)
       throw new ImportError(
@@ -120,7 +118,7 @@ async function verifySnapshots(
   return results;
 }
 
-export async function importRecipes(
+export async function importMemos(
   db: StoreDatabase,
   userId: string,
   sources: ImportSource[],
@@ -166,40 +164,40 @@ export async function importRecipes(
       for (const source of [...sources].sort((a, b) =>
         a.name.localeCompare(b.name),
       )) {
-        let recipe = (
+        let memo = (
           await tx.query<{ id: string }>(
-            sql`SELECT id FROM recipes WHERE user_id = ${userId} AND name = ${source.name} FOR UPDATE`,
+            sql`SELECT id FROM memos WHERE user_id = ${userId} AND name = ${source.name} FOR UPDATE`,
           )
         )[0];
-        const head = recipe
+        const head = memo
           ? ((
               await tx.query<{
                 version: number | null;
-              }>(sql`SELECT max(version)::integer AS version FROM recipe_versions
-          WHERE user_id = ${userId} AND recipe_id = ${recipe.id}`)
+              }>(sql`SELECT max(version)::integer AS version FROM memo_versions
+          WHERE user_id = ${userId} AND memo_id = ${memo.id}`)
             )[0]!.version ?? 0)
           : 0;
         const expectedVersion =
-          expected.get(source.name) ?? (recipe ? undefined : 0);
+          expected.get(source.name) ?? (memo ? undefined : 0);
         if (expectedVersion === undefined)
           throw new ImportError(
-            `${source.name}: supply an explicit expected version before replacing an existing recipe.`,
+            `${source.name}: supply an explicit expected version before replacing an existing memo.`,
           );
         z.number().int().nonnegative().safe().parse(expectedVersion);
         if (head !== expectedVersion)
           throw new ImportError(
-            `${source.name}: expected version conflicts with the current recipe.`,
+            `${source.name}: expected version conflicts with the current memo.`,
           );
-        if (!recipe)
-          recipe = (
+        if (!memo)
+          memo = (
             await tx.query<{ id: string }>(
-              sql`INSERT INTO recipes (user_id,name) VALUES (${userId},${source.name}) RETURNING id`,
+              sql`INSERT INTO memos (user_id,name) VALUES (${userId},${source.name}) RETURNING id`,
             )
           )[0]!;
-        await tx.query(sql`INSERT INTO recipe_versions (user_id,recipe_id,version,description,body,reason,actor_json,details_json)
-          VALUES (${userId},${recipe.id},${head + 1},${source.description},${source.body},'Import existing recipe',
-          ${JSON.stringify({ kind: "system", id: "recipe-import" })},${JSON.stringify({ kind: "import", format: { prefix: source.prefix } })})`);
-        committed.push({ source, recipeId: recipe.id, version: head + 1 });
+        await tx.query(sql`INSERT INTO memo_versions (user_id,memo_id,version,description,body,reason,actor_json,details_json)
+          VALUES (${userId},${memo.id},${head + 1},${source.description},${source.body},'Import existing memo',
+          ${JSON.stringify({ kind: "system", id: "memo-import" })},${JSON.stringify({ kind: "import", format: { prefix: source.prefix } })})`);
+        committed.push({ source, memoId: memo.id, version: head + 1 });
       }
       await verifySnapshots(tx, userId, committed);
       return committed;
@@ -227,7 +225,7 @@ async function main() {
   });
   if (!values.user)
     throw new ImportError(
-      "Pass --user with an existing Milton id and expected versions for existing recipes.",
+      "Pass --user with an existing Milton id and expected versions for existing memos.",
     );
   const expected = new Map<string, number>();
   for (const value of values["expected-version"] ?? []) {
@@ -239,9 +237,7 @@ async function main() {
     expected.set(match[1]!, Number(match[2]));
   }
   if (!values["source-dir"])
-    throw new ImportError(
-      "Pass --source-dir with the recipe folders to import.",
-    );
+    throw new ImportError("Pass --source-dir with the memo folders to import.");
   const sources = await loadImportSources(
     pathToFileURL(resolve(values["source-dir"]) + "/"),
   );
@@ -251,7 +247,7 @@ async function main() {
   );
   const db = neonDatabase(url);
   await verifyDatabaseTarget(db);
-  for (const result of await importRecipes(db, values.user, sources, expected))
+  for (const result of await importMemos(db, values.user, sources, expected))
     console.log(
       `${result.name}: version ${result.version}, ${result.bytes} bytes, PASS`,
     );

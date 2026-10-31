@@ -9,7 +9,7 @@ import {
 } from "./database";
 import { StoreError } from "./errors";
 import {
-  recipeWrites,
+  memoWrites,
   type CreateInput,
   type UpdateInput,
   type ArchiveInput,
@@ -17,30 +17,33 @@ import {
 import { parseVersionTag, versionTag } from "./versions";
 export { StoreError } from "./errors";
 
+// Stable legacy storage key: preserve existing identities and opaque version tags.
+export const TPS_REPORT_KEY = "vibes";
+
 export interface StoreBindings {
   DATABASE_URL?: string;
-  RECIPES_SOURCE?: string;
+  MEMOS_SOURCE?: string;
   // Private dependency injection for the embedded fixture; never populated from a request.
   storeDatabase?: StoreDatabase;
 }
-export function recipesSource(bindings: StoreBindings) {
-  const source = bindings.RECIPES_SOURCE ?? "bundle";
+export function memosSource(bindings: StoreBindings) {
+  const source = bindings.MEMOS_SOURCE ?? "bundle";
   if (source !== "bundle" && source !== "store")
     throw new StoreError(
       "configuration",
-      "RECIPES_SOURCE must be bundle or store.",
+      "MEMOS_SOURCE must be bundle or store.",
     );
   return source;
 }
 function database(bindings: StoreBindings): StoreDatabase {
   if (bindings.storeDatabase) return bindings.storeDatabase;
   if (!bindings.DATABASE_URL)
-    throw new StoreError("configuration", "The recipe store is unavailable.");
+    throw new StoreError("configuration", "The memo store is unavailable.");
   return neonDatabase(bindings.DATABASE_URL);
 }
 const positiveLimit = z.number().int().positive();
 const limitsSchema = z.object({
-  recipes: positiveLimit,
+  memos: positiveLimit,
   body_bytes: positiveLimit,
   name_bytes: positiveLimit,
   description_bytes: positiveLimit,
@@ -66,10 +69,7 @@ export async function readLimits(db: StoreSession): Promise<StoreLimits> {
   }
   const result = limitsSchema.safeParse(value);
   if (!result.success)
-    throw new StoreError(
-      "configuration",
-      "The recipe store limits are invalid.",
-    );
+    throw new StoreError("configuration", "The memo store limits are invalid.");
   return result.data;
 }
 export const utf8Bytes = (value: string) =>
@@ -143,32 +143,28 @@ export async function resolveIdentityAccount(
           403,
         );
       if (account.templates_revision === 0) {
-        for (const template of templates) {
-          const recipe =
-            (
-              await tx.query<{
-                id: string;
-              }>(sql`INSERT INTO recipes (user_id,name)
-          VALUES (${account.id},${template.name}) ON CONFLICT (user_id,name) DO NOTHING RETURNING id`)
-            )[0] ??
-            (
-              await tx.query<{ id: string }>(
-                sql`SELECT id FROM recipes WHERE user_id = ${account.id} AND name = ${template.name}`,
-              )
-            )[0]!;
-          if (
-            !(
-              await tx.query(
-                sql`SELECT version FROM recipe_versions WHERE user_id = ${account.id} AND recipe_id = ${recipe.id}`,
-              )
-            ).length
-          )
-            await tx.query(sql`INSERT INTO recipe_versions (user_id,recipe_id,version,description,body,reason,actor_json,details_json)
-            VALUES (${account.id},${recipe.id},1,${template.description},${template.body},'Initial template',
-            ${JSON.stringify({ kind: "system", id: "template-seed" })},${JSON.stringify({ kind: "seed", templateRevision: 1 })})`);
+        // Use this tenant-locked transaction; never open a nested repair transaction.
+        const current = (
+          await tx.query<SnapshotRow>(sql`SELECT r.id,r.name,v.description,v.body,v.version,v.archived
+          FROM memos r JOIN memo_versions v ON v.user_id=r.user_id AND v.memo_id=r.id
+          WHERE r.user_id=${account.id} AND r.name=${TPS_REPORT_KEY} ORDER BY v.version DESC LIMIT 1`)
+        )[0];
+        if (current?.archived) {
+          await tx.query(sql`INSERT INTO memo_versions (user_id,memo_id,version,description,body,archived,reason,actor_json,details_json)
+            VALUES (${account.id},${current.id},${current.version + 1},${current.description},${current.body},false,'Restored TPS Report','{"kind":"system"}',${JSON.stringify({ kind: "restore", source_version: current.version })})`);
+        } else if (!current) {
+          await tx.query(
+            sql`INSERT INTO memos (user_id,name) VALUES (${account.id},${TPS_REPORT_KEY}) ON CONFLICT (user_id,name) DO NOTHING`,
+          );
+          const description =
+            templates.find((item) => item.name === TPS_REPORT_KEY)
+              ?.description ?? "How you want your assistants to work with you.";
+          await tx.query(sql`INSERT INTO memo_versions (user_id,memo_id,version,description,body,reason,actor_json,details_json)
+            SELECT ${account.id},id,1,${description},'','Created TPS Report','{"kind":"system"}','{"kind":"create"}'
+            FROM memos WHERE user_id=${account.id} AND name=${TPS_REPORT_KEY}`);
         }
         await tx.query(
-          sql`UPDATE users SET templates_revision = 1 WHERE id = ${account.id}`,
+          sql`UPDATE users SET templates_revision=2 WHERE id=${account.id}`,
         );
       }
       return { miltonUserId: account.id };
@@ -208,12 +204,12 @@ export async function lookupIdentityAccount(
   }
 }
 
-export type RecipeSummary = {
+export type MemoSummary = {
   name: string;
   description: string;
   version: string;
 };
-export interface RecipeSnapshot extends RecipeSummary {
+export interface MemoSnapshot extends MemoSummary {
   text: string;
   archived: boolean;
 }
@@ -231,32 +227,46 @@ export interface StorePage<T> {
   items: T[];
   next_cursor: string | null;
 }
-export interface SearchHit extends RecipeSummary {
-  snippets: string[];
-}
+export type TpsReportSnapshot = Omit<MemoSnapshot, "name"> & {
+  title: "TPS Report";
+};
+export const tpsReportSnapshot = ({
+  name: _name,
+  ...memo
+}: MemoSnapshot): TpsReportSnapshot => ({ title: "TPS Report", ...memo });
+export type SearchHit =
+  | (MemoSummary & { kind: "memo"; snippets: string[] })
+  | {
+      kind: "tps_report";
+      title: "TPS Report";
+      description: string;
+      version: string;
+      snippets: string[];
+    };
 export type CallAllowance =
   { allowed: true } | { allowed: false; retry_at_ms: number; limit: "day" };
 export interface TenantStore {
-  createRecipe(input: CreateInput): Promise<RecipeSnapshot>;
-  updateRecipe(input: UpdateInput): Promise<RecipeSnapshot>;
-  archiveRecipe(input: ArchiveInput): Promise<RecipeSnapshot>;
-  listRecipes(
+  createMemo(input: CreateInput): Promise<MemoSnapshot>;
+  updateMemo(input: UpdateInput): Promise<MemoSnapshot>;
+  archiveMemo(input: ArchiveInput): Promise<MemoSnapshot>;
+  updateTpsReport(input: Omit<UpdateInput, "name">): Promise<MemoSnapshot>;
+  listMemos(
     cursor?: string,
     archived?: boolean,
-    excludeVibes?: boolean,
-  ): Promise<StorePage<RecipeSummary>>;
-  getRecipe(name: string): Promise<RecipeSnapshot | null>;
-  getVibes(): Promise<RecipeSnapshot>;
+    excludeTpsReport?: boolean,
+  ): Promise<StorePage<MemoSummary>>;
+  getMemo(name: string): Promise<MemoSnapshot | null>;
+  getTpsReport(): Promise<MemoSnapshot>;
   search(words: string, cursor?: string): Promise<StorePage<SearchHit>>;
   chargeToolCall(): Promise<CallAllowance>;
 }
 
-const summary = (row: SummaryRow): RecipeSummary => ({
+const summary = (row: SummaryRow): MemoSummary => ({
   name: row.name,
   description: row.description,
   version: versionTag(row.name, row.version, row.id),
 });
-const snapshot = (row: SnapshotRow): RecipeSnapshot => ({
+const snapshot = (row: SnapshotRow): MemoSnapshot => ({
   ...summary(row),
   text: row.body,
   archived: row.archived,
@@ -344,18 +354,18 @@ export async function storeForCurrentRequest(
   const db = database(bindings);
   const limits = await readLimits(db);
   await resolveActiveUser(db, userId);
-  const currentSnapshot = sql`FROM recipes r JOIN recipe_versions v ON v.user_id = r.user_id AND v.recipe_id = r.id
-    WHERE r.user_id = ${userId} AND v.version = (SELECT max(current.version) FROM recipe_versions current
-      WHERE current.user_id = r.user_id AND current.recipe_id = r.id)
+  const currentSnapshot = sql`FROM memos r JOIN memo_versions v ON v.user_id = r.user_id AND v.memo_id = r.id
+    WHERE r.user_id = ${userId} AND v.version = (SELECT max(current.version) FROM memo_versions current
+      WHERE current.user_id = r.user_id AND current.memo_id = r.id)
     AND EXISTS (SELECT 1 FROM users u WHERE u.id = ${userId} AND u.status = 'active')`;
-  async function getRecipe(name: string, session: StoreSession = db) {
+  async function getMemo(name: string, session: StoreSession = db) {
     if (
       !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) ||
       utf8Bytes(name) > limits.name_bytes
     )
       throw new StoreError(
         "invalid_name",
-        "Enter a valid recipe name within its byte limit.",
+        "Enter a valid memo name within its byte limit.",
         400,
       );
     const row = (
@@ -365,24 +375,28 @@ export async function storeForCurrentRequest(
     )[0];
     return row ? snapshot(row) : null;
   }
+  const { createMemo, updateMemo, updateTpsReport, archiveMemo } = memoWrites(
+    db,
+    userId,
+    assistant
+      ? {
+          kind: "assistant",
+          issuer: assistant.issuer,
+          client_id: assistant.clientId,
+        }
+      : undefined,
+  );
   return {
-    ...recipeWrites(
-      db,
-      userId,
-      assistant
-        ? {
-            kind: "assistant",
-            issuer: assistant.issuer,
-            client_id: assistant.clientId,
-          }
-        : undefined,
-    ),
-    async listRecipes(cursor, archived = false, excludeVibes = false) {
-      const query = excludeVibes ? `${archived}:recipes` : String(archived);
+    createMemo,
+    updateMemo,
+    updateTpsReport,
+    archiveMemo,
+    async listMemos(cursor, archived = false, excludeTpsReport = true) {
+      const query = excludeTpsReport ? `${archived}:memos` : String(archived);
       const after = readCursor(cursor, "list", query);
       const rows =
         await db.query<SummaryRow>(sql`SELECT r.id, r.name, v.description, v.version ${currentSnapshot}
-        AND v.archived = ${archived} AND (${!excludeVibes} OR r.name <> 'vibes') AND r.name > ${after} ORDER BY r.name LIMIT ${limits.page_size + 1}`);
+        AND v.archived = ${archived} AND (${!excludeTpsReport} OR r.name <> ${TPS_REPORT_KEY}) AND r.name > ${after} ORDER BY r.name LIMIT ${limits.page_size + 1}`);
       const items = rows.slice(0, limits.page_size).map(summary);
       return {
         items,
@@ -392,10 +406,10 @@ export async function storeForCurrentRequest(
             : null,
       };
     },
-    getRecipe,
-    async getVibes() {
-      const recipe = await getRecipe("vibes");
-      if (recipe && !recipe.archived) return recipe;
+    getMemo,
+    async getTpsReport() {
+      const memo = await getMemo(TPS_REPORT_KEY);
+      if (memo && !memo.archived) return memo;
       return db
         .transaction(async (tx) => {
           if (
@@ -411,24 +425,24 @@ export async function storeForCurrentRequest(
               403,
             );
           // Serialize repairs with ordinary writes, then recheck under the tenant lock.
-          const current = await getRecipe("vibes", tx);
+          const current = await getMemo(TPS_REPORT_KEY, tx);
           if (current && !current.archived) return current;
           if (current) {
             const tag = parseVersionTag(current.version)!;
-            await tx.query(sql`INSERT INTO recipe_versions (user_id,recipe_id,version,description,body,archived,reason,actor_json,details_json)
-            VALUES (${userId},${tag.id},${tag.number + 1},${current.description},${current.text},false,'Restored vibes','{"kind":"system"}',${JSON.stringify({ kind: "restore", source_version: tag.number })})`);
-            return (await getRecipe("vibes", tx))!;
+            await tx.query(sql`INSERT INTO memo_versions (user_id,memo_id,version,description,body,archived,reason,actor_json,details_json)
+            VALUES (${userId},${tag.id},${tag.number + 1},${current.description},${current.text},false,'Restored TPS Report','{"kind":"system"}',${JSON.stringify({ kind: "restore", source_version: tag.number })})`);
+            return (await getMemo(TPS_REPORT_KEY, tx))!;
           }
           await tx.query(
-            sql`INSERT INTO recipes (user_id,name) VALUES (${userId},'vibes') ON CONFLICT (user_id,name) DO NOTHING`,
+            sql`INSERT INTO memos (user_id,name) VALUES (${userId},${TPS_REPORT_KEY}) ON CONFLICT (user_id,name) DO NOTHING`,
           );
           const description =
-            templates.find((item) => item.name === "vibes")?.description ??
-            "How you want your assistants to work with you.";
-          await tx.query(sql`INSERT INTO recipe_versions (user_id,recipe_id,version,description,body,reason,actor_json,details_json)
-          SELECT ${userId},id,1,${description},'','Created vibes','{"kind":"system"}','{"kind":"create"}'
-          FROM recipes WHERE user_id=${userId} AND name='vibes'`);
-          return (await getRecipe("vibes", tx))!;
+            templates.find((item) => item.name === TPS_REPORT_KEY)
+              ?.description ?? "How you want your assistants to work with you.";
+          await tx.query(sql`INSERT INTO memo_versions (user_id,memo_id,version,description,body,reason,actor_json,details_json)
+          SELECT ${userId},id,1,${description},'','Created TPS Report','{"kind":"system"}','{"kind":"create"}'
+          FROM memos WHERE user_id=${userId} AND name=${TPS_REPORT_KEY}`);
+          return (await getMemo(TPS_REPORT_KEY, tx))!;
         })
         .catch((error) => {
           throw databaseFailure(error);
@@ -446,21 +460,35 @@ export async function storeForCurrentRequest(
       const rows =
         await db.query<SnapshotRow>(sql`SELECT r.id, r.name, v.description, v.body, v.version, v.archived ${currentSnapshot}
         AND NOT v.archived AND r.name > ${after} ORDER BY r.name`);
-      const matches: SearchHit[] = [];
+      const matches: { key: string; hit: SearchHit }[] = [];
       for (const row of rows) {
         const snippets = snippetsFor(
-          `${row.name}\n${row.description}\n${row.body}`,
+          `${row.name === TPS_REPORT_KEY ? "TPS Report" : row.name}\n${row.description}\n${row.body}`,
           query,
         );
-        if (snippets.length) matches.push({ ...summary(row), snippets });
+        if (snippets.length)
+          matches.push({
+            key: row.name,
+            hit:
+              row.name === TPS_REPORT_KEY
+                ? {
+                    kind: "tps_report",
+                    title: "TPS Report",
+                    description: row.description,
+                    version: summary(row).version,
+                    snippets,
+                  }
+                : { kind: "memo", ...summary(row), snippets },
+          });
         if (matches.length > limits.page_size) break;
       }
-      const items = matches.slice(0, limits.page_size);
+      const page = matches.slice(0, limits.page_size);
+      const items = page.map(({ hit }) => hit);
       return {
         items,
         next_cursor:
           matches.length > limits.page_size
-            ? nextCursor("search", items.at(-1)!.name, query)
+            ? nextCursor("search", page.at(-1)!.key, query)
             : null,
       };
     },
@@ -510,7 +538,13 @@ export async function personStoreForCurrentRequest(
   bindings: StoreBindings,
   auth: VerifiedStoreAuth,
 ) {
-  const reads = await storeForCurrentRequest(bindings, auth);
+  const {
+    createMemo: _create,
+    updateMemo: _update,
+    updateTpsReport: _updateTps,
+    archiveMemo: _archive,
+    ...reads
+  } = await storeForCurrentRequest(bindings, auth);
   const db = database(bindings);
   const userId = auth.userId;
   const limits = await readLimits(db);
@@ -526,9 +560,14 @@ export async function personStoreForCurrentRequest(
     actor: JSON.parse(row.actor_json) as Record<string, unknown>,
     created_at: row.created_at,
   });
+  const { archiveMemo, restoreMemo, revertMemo } = memoWrites(db, userId, {
+    kind: "person",
+  });
   return {
     ...reads,
-    ...recipeWrites(db, userId, { kind: "person" }),
+    archiveMemo,
+    restoreMemo,
+    revertMemo,
     async history(
       name: string,
       cursor?: string,
@@ -547,7 +586,7 @@ export async function personStoreForCurrentRequest(
         created_at: string;
       }>(sql`
         SELECT v.version,v.reason,v.actor_json,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
-        FROM recipes r JOIN recipe_versions v ON v.user_id=r.user_id AND v.recipe_id=r.id
+        FROM memos r JOIN memo_versions v ON v.user_id=r.user_id AND v.memo_id=r.id
         WHERE r.user_id=${userId} AND r.name=${name} AND v.version < ${before}::bigint AND ${active}
         ORDER BY v.version DESC LIMIT ${limits.page_size + 1}`);
       const items = rows.slice(0, limits.page_size).map(metadata);
@@ -560,7 +599,7 @@ export async function personStoreForCurrentRequest(
     async getVersion(
       name: string,
       number: number,
-    ): Promise<(RecipeSnapshot & { metadata: VersionMetadata }) | null> {
+    ): Promise<(MemoSnapshot & { metadata: VersionMetadata }) | null> {
       const row = (
         await db.query<
           SnapshotRow & {
@@ -571,28 +610,28 @@ export async function personStoreForCurrentRequest(
         >(sql`
         SELECT r.id,r.name,v.description,v.body,v.archived,v.version,v.reason,v.actor_json,
           to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
-        FROM recipes r JOIN recipe_versions v ON v.user_id=r.user_id AND v.recipe_id=r.id
+        FROM memos r JOIN memo_versions v ON v.user_id=r.user_id AND v.memo_id=r.id
         WHERE r.user_id=${userId} AND r.name=${name} AND v.version=${number} AND ${active}`)
       )[0];
       return row ? { ...snapshot(row), metadata: metadata(row) } : null;
     },
-    async downloadRecipes(): Promise<RecipeSnapshot[]> {
+    async downloadMemos(): Promise<MemoSnapshot[]> {
       const rows =
         await db.query<SnapshotRow>(sql`SELECT r.id,r.name,v.description,v.body,v.version,v.archived
-        FROM recipes r JOIN recipe_versions v ON v.user_id=r.user_id AND v.recipe_id=r.id
+        FROM memos r JOIN memo_versions v ON v.user_id=r.user_id AND v.memo_id=r.id
         WHERE r.user_id=${userId} AND ${active} AND NOT v.archived
-        AND v.version=(SELECT max(h.version) FROM recipe_versions h WHERE h.user_id=r.user_id AND h.recipe_id=r.id) ORDER BY r.name`);
+        AND v.version=(SELECT max(h.version) FROM memo_versions h WHERE h.user_id=r.user_id AND h.memo_id=r.id) ORDER BY r.name`);
       return rows.map(snapshot);
     },
     async usage() {
       const row = (
         await db.query<{
           retained_bytes: number;
-          recipes: number;
+          memos: number;
           tool_calls: number;
           writes: number;
         }>(sql`
-        SELECT u.retained_bytes,(SELECT count(*)::integer FROM recipes r WHERE r.user_id=u.id AND r.name <> 'vibes') AS recipes,
+        SELECT u.retained_bytes,(SELECT count(*)::integer FROM memos r WHERE r.user_id=u.id AND r.name <> ${TPS_REPORT_KEY}) AS memos,
         coalesce(d.tool_calls,0)::integer AS tool_calls,coalesce(d.writes,0)::integer AS writes
         FROM users u LEFT JOIN usage_daily d ON d.user_id=u.id AND d.day_utc=(clock_timestamp() AT TIME ZONE 'UTC')::date
         WHERE u.id=${userId} AND u.status='active'`)
@@ -615,7 +654,7 @@ export async function guardStoreRequest(
   request: Request,
   bindings: StoreBindings,
 ): Promise<Request | Response> {
-  if (recipesSource(bindings) === "bundle") return request;
+  if (memosSource(bindings) === "bundle") return request;
   const db = database(bindings);
   const limits = await readLimits(db);
   let bounded = request;
