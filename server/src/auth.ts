@@ -374,8 +374,8 @@ export function browserPages(config: RuntimeConfig) {
           const user = await session();
           if (!user)
             return page(
-              "Your memos, in every assistant",
-              '<p><a href="/login">Sign in to Milton</a></p>',
+              "Your instructions, in every assistant.",
+              '<p>Keep how you like things done in one place, ready for the assistants you connect.</p><p><a class="button" href="/login">Sign in to Milton</a></p>',
             );
           return renderMemos(
             await lookupIdentityAccount(config, {

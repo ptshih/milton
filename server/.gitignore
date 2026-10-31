@@ -1,4 +1,6 @@
 .wrangler/
 generated/
 public/milton.css
+public/fonts/
+public/favicon.svg
 .vercel/

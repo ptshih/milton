@@ -1,14 +1,7 @@
-/**
- * The token values code needs outside CSS: the web manifest, the browser's
- * theme colour and the generated app icons. base.css is the source;
- * contrast.test.ts fails when a value here drifts from it.
- */
+/** base.css owns the palette; contrast.test.ts checks these code-facing values. */
 export const light = {
-  ground: "#ffffff",
-  ink: "#111113",
-  "on-ink": "#ffffff",
+  ground: "#F6F2EA",
+  ink: "#221F1B",
+  "on-ink": "#FFFFFF",
 } as const;
-
-export const dark = {
-  ground: "#111113",
-} as const;
+export const dark = { ground: "#181411" } as const;

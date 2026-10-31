@@ -13,17 +13,17 @@ import * as tokens from "./tokens";
 const PAIRS: [text: string, background: string][] = [
   ["ink", "ground"],
   ["muted", "ground"],
-  ["ink", "bubble"],
-  ["muted", "bubble"],
-  ["success", "bubble"],
-  ["open", "ground"],
-  ["attention-ink", "attention"],
+  ["ink", "surface"],
+  ["muted", "surface"],
   ["on-ink", "ink"],
-  ["fortune-ink", "fortune"],
-  ["fortune-muted", "fortune"],
+  ["on-accent", "accent"],
+  ["on-accent", "accent-hover"],
+  ["sheet-bar-ink", "sheet-bar"],
+  ["on-band", "band"],
+  ["band-muted", "band"],
 ];
-/** Borders and dividers: never text, never under text. */
-const LINES = ["hairline", "input", "fortune-line", "fortune-fold"];
+/** Hairlines and sheet rules are decorative; inputs are functional boundaries. */
+const LINES = ["hairline", "input", "sheet-rule"];
 /** A translucent shade cast under a raised surface: never text, never under text. */
 const SHADOWS = ["shadow"];
 
@@ -101,6 +101,14 @@ describe("the theme tokens", () => {
           );
       }
     expect(failing).toEqual([]);
+  });
+
+  test("functional borders reach 3:1 on both working surfaces", () => {
+    for (const theme of Object.values(THEMES))
+      for (const surface of ["ground", "surface"])
+        expect(
+          contrastRatio(theme.input!, theme[surface]!),
+        ).toBeGreaterThanOrEqual(3);
   });
 
   test("tokens.ts carries base.css's values for the code that needs them", () => {

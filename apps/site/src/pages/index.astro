@@ -1,164 +1,511 @@
 ---
 import SiteLayout from "../layouts/SiteLayout.astro";
-import milton from "../../../../design/milton.png";
 ---
 
 <SiteLayout
-  title="Milton — your vibes, in every assistant"
-  description="Write down once how you like things done. Claude, ChatGPT and your coding agents follow it."
+  title="Milton: your instructions, in every assistant"
+  description="Keep how you like things done in one place. Share your instructions with the chats and coding agents you connect."
 >
   <section class="hero" aria-labelledby="headline">
-    <img
-      class="portrait"
-      src={milton.src}
-      width="112"
-      height="112"
-      alt="Milton holding his red stapler"
-    />
-    <h1 id="headline">Your vibes, in every assistant.</h1>
-    <p class="intro">
-      Write down once how you like things done: how you write, how you decide,
-      what never to do. Milton keeps it as a few short memos, and every
-      assistant you connect reads them before it works for you.
+    <div>
+      <p class="eyebrow">// A little less repeating yourself.</p>
+      <h1 id="headline">
+        Your instructions,
+        <br />
+        in every assistant.
+      </h1>
+      <p class="intro">
+        Tell your assistants how you like things done. Milton keeps those
+        instructions in one place, ready for the chats and coding agents you
+        connect.
+      </p>
+      <div class="actions">
+        <a class="button" href="https://app.meetmilton.com/">
+          Get started <span aria-hidden="true">↗</span>
+        </a>
+        <a class="button secondary" href="#how-it-works">
+          See how it works <span aria-hidden="true">↓</span>
+        </a>
+      </div>
+      <p class="access-note">Sign in with Google or GitHub.</p>
+    </div>
+    <figure class="memo-example">
+      <div class="sheet">
+        <div class="sheet-bar">
+          <span>Memo cover sheet</span>
+          <span>Example instructions</span>
+        </div>
+        <div class="example-name">
+          TPS Report <span>TPS.md</span>
+        </div>
+        <div class="memo-body">
+          <h2>Here’s how I like to work.</h2>
+          <p>Lead with the answer. Keep it short.</p>
+          <p>Be direct when you disagree.</p>
+          <p>Ask before taking an action I can’t undo.</p>
+          <p>No em dashes. Yes to the Oxford comma.</p>
+        </div>
+      </div>
+      <figcaption>
+        One set of instructions for your connected assistants to read. These are
+        examples, not instructions added to your account.
+      </figcaption>
+    </figure>
+  </section>
+  <div class="assistant-strip">
+    <span>For the assistants you use.</span>
+    <strong>Claude · ChatGPT</strong>
+    <strong>Claude Code · Codex · Cursor</strong>
+  </div>
+  <section class="section" id="your-way">
+    <p class="eyebrow">// Your way of working</p>
+    <h2>From your inbox to your editor.</h2>
+    <p class="section-lead">
+      Keep your everyday preferences in TPS Report, your permanent core memo.
+      Add a memo for the things you do a particular way.
+    </p>
+    <div class="use-cases">
+      <article class="use-case">
+        <h3>When you write and think.</h3>
+        <p>
+          Your tone, the detail you want, and how you like to weigh a decision.
+          Bring those instructions to the next chat.
+        </p>
+        <p class="sample-rule">
+          “Keep my emails warm, direct, and under 150 words.”
+        </p>
+      </article>
+      <article class="use-case">
+        <h3>When you build.</h3>
+        <p>
+          How to explain a change, what to check, and when to ask before acting.
+          Give each coding agent the same starting point.
+        </p>
+        <p class="sample-rule">
+          “Explain the tradeoff before changing the approach.”
+        </p>
+      </article>
+    </div>
+  </section>
+  <section class="section" id="how-it-works">
+    <p class="eyebrow">// How it works</p>
+    <h2>
+      Put it in writing.
+      <br />
+      <span>Bring it with you.</span>
+    </h2>
+    <ol class="steps">
+      <li>
+        <h3>Connect your assistants.</h3>
+        <p>
+          Connect Milton through your assistant’s MCP settings using{" "}
+          <code>https://mcp.meetmilton.com/mcp</code>. Setup depends on the
+          assistant and your plan.
+        </p>
+      </li>
+      <li>
+        <h3>Make your preferences clear.</h3>
+        <p>
+          Your account starts with an empty TPS Report. Ask your connected
+          assistant to help draft it from preferences you share, ask useful
+          follow-ups, and show you the full draft before saving.
+        </p>
+      </li>
+      <li>
+        <h3>Keep refining.</h3>
+        <p>
+          Ask your assistant to read TPS Report before it starts. Tell it what
+          to change or ask it to create a memo for a task. Every saved change
+          keeps a version for you to review.
+        </p>
+      </li>
+    </ol>
+    <p class="reading-note">
+      Assistants still decide when to read and use your memos. Milton makes the
+      instructions available; it doesn’t make the decisions for them.
     </p>
   </section>
-
-  <section class="details" aria-label="How Milton works">
-    <article>
-      <span class="number" aria-hidden="true">
-        01
-      </span>
-      <h2>Write it once.</h2>
-      <p>
-        TPS Report for your working preferences, plus a memo for each thing you
-        do your way, like how you write an email.
-      </p>
-    </article>
-    <article>
-      <span class="number" aria-hidden="true">
-        02
-      </span>
-      <h2>Connect any assistant.</h2>
-      <p>
-        Claude, ChatGPT, Cursor and other MCP clients connect to one address:{" "}
-        <code>https://mcp.meetmilton.com/mcp</code>.
-      </p>
-    </article>
-    <article>
-      <span class="number" aria-hidden="true">
-        03
-      </span>
-      <h2>Keep every version.</h2>
-      <p>
-        Assistants can save what you tell them. Every change is kept, so nothing
-        is lost.
-      </p>
-    </article>
+  <section class="section control-section">
+    <div>
+      <p class="eyebrow">// You stay in control</p>
+      <h2>
+        Your instructions.
+        <br />
+        <span>Your last word.</span>
+      </h2>
+    </div>
+    <div class="controls">
+      <article>
+        <h3>See what changed.</h3>
+        <p>
+          Every saved change keeps a version and records who made it. Compare
+          versions and restore an earlier one as a new version. The history
+          stays.
+        </p>
+      </article>
+      <article>
+        <h3>Take your memos with you.</h3>
+        <p>
+          Download your current active memos as Markdown, including TPS.md.
+          Milton’s code is open source under MIT, with instructions for running
+          your own server.{" "}
+          <a href="https://github.com/zoneofdanger/milton">Read the source ↗</a>
+        </p>
+      </article>
+    </div>
   </section>
-
-  <section class="closing" aria-label="Early access">
-    <p class="tagline">Vibe coding, but the vibes are in writing.</p>
-    <p class="sign-in-note">
-      Milton is in early access. Sign in with GitHub or Google.
-    </p>
+  <section class="section faq">
+    <p class="eyebrow">// A few things to know</p>
+    <h2>Before you connect.</h2>
+    <details>
+      <summary>What is a memo?</summary>
+      <p>
+        A short set of written instructions for an assistant. TPS Report
+        describes how you like to work in general. Other memos cover a task,
+        such as your email style. TPS Report is permanent and can stay empty.
+      </p>
+    </details>
+    <details>
+      <summary>How does this fit with an assistant’s memory?</summary>
+      <p>
+        Milton holds instructions about how you want things done. An assistant’s
+        memory or knowledge tools can hold facts and context. You can use them
+        together. Milton does not automatically import another service’s memory.
+      </p>
+    </details>
+    <details>
+      <summary>Will an assistant always follow my memos?</summary>
+      <p>
+        No. They’re assistants, not employees. Milton makes your saved
+        instructions available to the assistants you connect. The assistant
+        still decides when to read them and how to use them. Ask it to read TPS
+        Report at the start of a conversation.
+      </p>
+    </details>
+    <details>
+      <summary>Who can read or change my memos?</summary>
+      <p>
+        You and the assistants you connect can read them. Assistants create and
+        update content when you ask. On the website, you can archive or restore
+        ordinary memos and restore earlier versions of any memo, including TPS
+        Report. Archived memos are not served to assistants.{" "}
+        <a href="/privacy">Read the privacy policy.</a>
+      </p>
+    </details>
+    <details>
+      <summary>Can I try Milton?</summary>
+      <p>
+        Yes. <a href="https://app.meetmilton.com/">Open Milton</a> and sign in
+        with Google or GitHub. New accounts start with only an empty TPS Report
+        and no ordinary memos. Your connected assistant can help you write the
+        first draft; approve it before saving.
+      </p>
+    </details>
+    <details>
+      <summary>Why does this exist?</summary>
+      <p>
+        Peter built Milton because he was tired of asking Claude to stop using
+        em dashes. Some instructions deserve a place to live outside the next
+        chat.
+      </p>
+    </details>
+  </section>
+  <section class="closing">
+    <p class="eyebrow">// Did you get the memo?</p>
+    <h2>A better starting point.</h2>
+    <p>Give your next assistant your instructions in writing.</p>
+    <a class="button" href="https://app.meetmilton.com/">
+      Get started <span aria-hidden="true">↗</span>
+    </a>
   </section>
 </SiteLayout>
 
 <style>
-  .hero {
-    padding: 48px 0 72px;
-    text-align: center;
+  h1,
+  h2,
+  h3,
+  p,
+  figure {
+    margin: 0;
   }
-  .portrait {
-    display: block;
-    margin: 0 auto 32px;
-    border: 1px solid var(--hairline);
-    border-radius: 50%;
+  .hero {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 68px;
+    align-items: center;
+    padding-block: 76px 80px;
+  }
+  .eyebrow {
+    font: 12px/1.5 var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
   }
   h1 {
-    max-width: 800px;
-    margin: 0 auto;
-    font-size: clamp(42px, 6.5vw, 72px);
-    font-weight: 600;
-    line-height: 1.08;
-    letter-spacing: -0.055em;
-    text-wrap: balance;
+    font-size: clamp(40px, 5vw, 64px);
+    line-height: 1.05;
+    letter-spacing: -0.035em;
+    margin-top: 22px;
   }
   .intro {
-    max-width: 640px;
-    margin: 24px auto 0;
-    color: var(--muted);
-    font-size: 18px;
-    line-height: 1.65;
-    text-wrap: pretty;
+    font-size: 19px;
+    line-height: 1.6;
+    margin-top: 24px;
+    max-width: 36em;
   }
-  .details {
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 26px;
+  }
+  .access-note {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 13px;
+  }
+  .memo-example {
+    min-width: 0;
+  }
+  .memo-example .sheet {
+    border-color: var(--ink);
+    box-shadow: 0 16px 36px var(--shadow);
+  }
+  .sheet-bar {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    border-bottom-color: var(--ink);
+    padding-inline: 16px;
+  }
+  .example-name {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 14px 24px;
+    border-bottom: 3px double var(--ink);
+    font: 12px/1.5 var(--font-mono);
+  }
+  .example-name span {
+    color: var(--muted);
+  }
+  .memo-body {
+    padding: 26px 24px 30px;
+  }
+  .memo-body h2 {
+    font-size: 28px;
+    line-height: 1.2;
+    margin-bottom: 21px;
+  }
+  .memo-body p {
+    font-size: 15px;
+  }
+  .memo-body p + p {
+    margin-top: 13px;
+  }
+  figcaption {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 14px;
+    max-width: 52ch;
+  }
+  .assistant-strip {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px 28px;
+    border-block: 1px solid var(--hairline);
+    padding-block: 22px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .assistant-strip strong {
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .section {
+    padding-block: 80px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .section h2 {
+    font-size: clamp(32px, 4vw, 48px);
+    margin-block: 16px 24px;
+  }
+  .section h2 span {
+    color: var(--muted);
+  }
+  .section-lead {
+    max-width: 60ch;
+    margin-bottom: 32px;
+    font-size: 18px;
+  }
+  .use-cases,
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 32px;
+  }
+  .use-case {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    padding: 32px;
+    border-radius: 16px;
+  }
+  h3 {
+    font-size: 26px;
+    margin-bottom: 12px;
+  }
+  .use-case p,
+  .controls p {
+    color: var(--muted);
+  }
+  .use-case .sample-rule {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--hairline);
+    color: var(--ink);
+    font-size: 15px;
+  }
+  .steps {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 48px;
-    padding: 40px 0 48px;
-    border-top: 1px solid var(--hairline);
+    gap: 32px;
+    padding: 0;
+    margin: 32px 0;
+    list-style: none;
+    counter-reset: step;
   }
-  .number {
+  .steps li {
+    counter-increment: step;
+  }
+  .steps li::before {
+    content: "0" counter(step);
+    font: 12px/1.5 var(--font-mono);
     color: var(--muted);
-    font-family: var(--font-mono);
-    font-size: 12px;
   }
-  h2 {
-    margin: 16px 0 8px;
-    font-size: 18px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
+  .steps h3 {
+    margin-top: 16px;
   }
-  .details p {
-    margin: 0;
+  .steps p {
     color: var(--muted);
-    font-size: 15px;
-    line-height: 1.65;
   }
   code {
-    font-family: var(--font-mono);
     font-size: 13px;
-    overflow-wrap: anywhere;
+  }
+  .reading-note {
+    max-width: 75ch;
+    margin-top: 32px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .control-section {
+    display: grid;
+    grid-template-columns: 0.8fr 1fr;
+    gap: 64px;
+  }
+  .controls {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+  .faq details {
+    border-top: 1px solid var(--hairline);
+    padding-block: 12px;
+  }
+  .faq summary {
+    cursor: pointer;
+    min-height: 44px;
+    padding-block: 10px;
+    font-weight: 600;
+  }
+  .faq details p {
+    max-width: 75ch;
+    margin-block: 8px 12px;
+    color: var(--muted);
   }
   .closing {
-    padding: 0 0 48px;
     text-align: center;
+    padding-block: 80px;
   }
-  .tagline {
-    margin: 0;
-    font-size: 18px;
+  .closing h2 {
+    font-size: clamp(32px, 4vw, 48px);
+    margin-block: 16px;
   }
-  .sign-in-note {
-    margin: 16px 0 0;
+  .closing p:not(.eyebrow) {
     color: var(--muted);
-    font-size: 12px;
+    margin-bottom: 24px;
   }
-  @media (max-width: 640px) {
+  @media (max-width: 960px) {
     .hero {
-      padding: 40px 0 48px;
+      grid-template-columns: 1fr;
+      gap: 38px;
+      padding-block: 48px;
     }
-    .portrait {
-      width: 96px;
-      height: 96px;
-      margin-bottom: 24px;
+    h1 {
+      max-width: 660px;
     }
     .intro {
-      font-size: 16px;
+      max-width: 45ch;
     }
-    .details {
+    .memo-example {
+      max-width: 600px;
+    }
+    .control-section {
       grid-template-columns: 1fr;
-      gap: 32px;
-      padding: 32px 0;
+      gap: 16px;
     }
-    h2 {
-      margin-top: 8px;
-    }
+  }
+  @media (max-width: 767px) {
+    .section,
     .closing {
-      padding-bottom: 32px;
+      padding-block: 48px;
     }
-    .tagline {
+    .use-cases,
+    .steps {
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+    .hero {
+      padding-block: 38px 44px;
+      gap: 34px;
+    }
+    .eyebrow {
+      font-size: 11px;
+    }
+    .intro {
+      font-size: 17px;
+      margin-top: 20px;
+    }
+    .actions {
+      gap: 10px;
+      margin-top: 22px;
+    }
+    .actions .button {
+      font-size: 14px;
+      padding-inline: 18px;
+    }
+    .sheet-bar {
+      font-size: 10px;
+      padding-inline: 12px;
+    }
+    .example-name {
+      padding-inline: 18px;
+    }
+    .memo-body {
+      padding: 22px 18px 25px;
+    }
+    .memo-body h2 {
+      font-size: 25px;
+    }
+    .memo-body p {
+      font-size: 14px;
+    }
+    .section-lead {
       font-size: 16px;
+    }
+    .use-case {
+      padding: 24px;
     }
   }
 </style>

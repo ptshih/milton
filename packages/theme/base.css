@@ -1,98 +1,198 @@
-/* ============================================================
-   Milton's design tokens: look E, a messenger shell in the
-   system font. Light is the default; dark follows the system's
-   prefers-color-scheme, and data-theme="light" or "dark" on
-   <html> forces either. contrast.test.ts holds every text and
-   background pair at 4.5:1 or better in both themes.
-   ============================================================ */
-
+/* Shared warm-paper theme. The site explicitly chooses light; the app follows
+   the system. Both dark declarations are kept equal by contrast.test.ts. */
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/source-serif-4-semibold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/jetbrains-mono-regular.woff2") format("woff2");
+}
 :root {
   color-scheme: light;
-
-  /* Surfaces */
-  --ground: #ffffff; /* page, header, composer */
-  --bubble: #f0f0f2; /* Milton's bubbles */
-  --attention: #fff8c5; /* labels that need the user */
-
-  /* Text */
-  --ink: #111113; /* text; also the avatar and the send button */
-  --on-ink: #ffffff; /* text and icons on an ink fill */
-  --muted: #5c5c66; /* status lines, placeholders */
-  --success: #116b45; /* a confirmed send */
-  --open: #1a7f37; /* an open pull request, passing checks */
-  --attention-ink: #7d4e00; /* text on attention */
-
-  /* Lines */
-  --hairline: #e3e3e6; /* dividers */
-  --input: #d0d0d6; /* the composer's outline */
-
-  /* Shade under a raised surface on a wide screen: the name, the message box, the menu */
-  --shadow: rgba(17, 17, 19, 0.08);
-
-  /* The paper fortune. */
-  --fortune: #fbf5e9;
-  --fortune-ink: #403521;
-  --fortune-muted: #6c593a;
-  --fortune-line: #e7dbc5;
-  --fortune-fold: #eee1c9;
-
-  /* Type: the system font, no web fonts */
+  --ground: #f6f2ea;
+  --surface: #fffdf8;
+  --ink: #221f1b;
+  --on-ink: #ffffff;
+  --muted: #6b6359;
+  --hairline: #e3dbce;
+  --accent: #221c19;
+  --on-accent: #ffffff;
+  --accent-hover: #3c3028;
+  --sheet-bar: #ead6ae;
+  --sheet-bar-ink: #221f1b;
+  --sheet-rule: #b09a72;
+  --input: #8d7f6e;
+  --band: #221c19;
+  --on-band: #f3ede3;
+  --band-muted: #aba197;
+  --shadow: rgba(34, 31, 27, 0.08);
+  --font-serif: "Source Serif 4", Georgia, serif;
   --font-sans:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
-
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --ground: #111113;
-    --bubble: #26262b;
-    --attention: #3d3209;
-    --ink: #ededf0;
-    --on-ink: #111113;
-    --muted: #a1a1aa;
-    --success: #4cc38a;
-    --open: #3fb950;
-    --attention-ink: #f5d060;
-    --hairline: #2c2c31;
-    --input: #45454d;
-    --shadow: rgba(0, 0, 0, 0.4);
-    --fortune: #322c22;
-    --fortune-ink: #f2e7d3;
-    --fortune-muted: #d1bd99;
-    --fortune-line: #584a34;
-    --fortune-fold: #584a34;
+    --ground: #181411;
+    --surface: #241f1b;
+    --ink: #f3ede3;
+    --on-ink: #221c19;
+    --muted: #b6aba0;
+    --hairline: #463c33;
+    --accent: #ead6ae;
+    --on-accent: #221c19;
+    --accent-hover: #f3e3c5;
+    --sheet-bar: #3a3023;
+    --sheet-bar-ink: #ead6ae;
+    --sheet-rule: #8d7757;
+    --input: #9c8b7a;
+    --band: #100d0b;
+    --on-band: #f3ede3;
+    --band-muted: #aba197;
+    --shadow: rgba(0, 0, 0, 0.3);
   }
 }
-
-/* The same dark values, forced; contrast.test.ts keeps the two blocks equal. */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --ground: #111113;
-  --bubble: #26262b;
-  --attention: #3d3209;
-  --ink: #ededf0;
-  --on-ink: #111113;
-  --muted: #a1a1aa;
-  --success: #4cc38a;
-  --open: #3fb950;
-  --attention-ink: #f5d060;
-  --hairline: #2c2c31;
-  --input: #45454d;
-  --shadow: rgba(0, 0, 0, 0.4);
-  --fortune: #322c22;
-  --fortune-ink: #f2e7d3;
-  --fortune-muted: #d1bd99;
-  --fortune-line: #584a34;
-  --fortune-fold: #584a34;
+  --ground: #181411;
+  --surface: #241f1b;
+  --ink: #f3ede3;
+  --on-ink: #221c19;
+  --muted: #b6aba0;
+  --hairline: #463c33;
+  --accent: #ead6ae;
+  --on-accent: #221c19;
+  --accent-hover: #f3e3c5;
+  --sheet-bar: #3a3023;
+  --sheet-bar-ink: #ead6ae;
+  --sheet-rule: #8d7757;
+  --input: #9c8b7a;
+  --band: #100d0b;
+  --on-band: #f3ede3;
+  --band-muted: #aba197;
+  --shadow: rgba(0, 0, 0, 0.3);
 }
-
-@layer base {
-  body {
-    background-color: var(--ground);
-    color: var(--ink);
-    font-family: var(--font-sans);
-    font-size: 1rem;
-    line-height: 1.4;
-  }
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 1rem/1.6 var(--font-sans);
+}
+h1,
+h2,
+h3 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+a {
+  color: inherit;
+  text-underline-offset: 0.25em;
+}
+a,
+button,
+summary {
+  touch-action: manipulation;
+}
+:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 4px;
+}
+pre,
+code {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+p,
+li,
+dd,
+code {
+  overflow-wrap: anywhere;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 44px;
+  font: 600 1.625rem/1 var(--font-serif);
+  text-decoration: none;
+}
+.brand svg {
+  flex: none;
+}
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 1.25rem;
+  z-index: 2;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  color: var(--ink);
+}
+.skip-link:focus {
+  top: 0.75rem;
+}
+.button,
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  min-height: 48px;
+  max-width: 100%;
+  padding: 0.6875rem 1.5rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: 600 0.9375rem/1.4 var(--font-sans);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.button:hover,
+button:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+.button.secondary,
+button.secondary {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--ink);
+}
+.button.secondary:hover,
+button.secondary:hover {
+  background: var(--surface);
+}
+.sheet {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  min-width: 0;
+}
+.sheet-bar {
+  padding: 0.6875rem 1.375rem;
+  border-radius: 5px 5px 0 0;
+  border-top: 3px solid var(--sheet-rule);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--sheet-bar);
+  color: var(--sheet-bar-ink);
+  font: 0.6875rem/1.5 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }

@@ -1,4 +1,4 @@
-import { escapeHtml as e, page } from "./pages";
+import { escapeHtml as e, page as renderPage } from "./pages";
 import {
   StoreError,
   TPS_REPORT_KEY,
@@ -8,6 +8,13 @@ import {
 } from "./store";
 import { parseVersionTag } from "./store/versions";
 import { downloadResponse } from "./download";
+
+const page = (
+  title: string,
+  content: string,
+  status = 200,
+  layout: "memo" | "tps" = "memo",
+) => renderPage(title, content, status, "", layout);
 
 export const isMemoRoute = (path: string) =>
   path === "/" ||
@@ -49,6 +56,11 @@ const status = (url: URL, core = false) => {
 const nav =
   '<nav aria-label="Memos"><a href="/">Your memos</a><a href="/tps-report">TPS Report</a><a href="/?archived=1">Archived</a><a href="/download">Download all</a></nav>';
 
+function document(memo: MemoSnapshot, heading: "h1" | "h2" = "h1") {
+  const core = memo.name === TPS_REPORT_KEY;
+  return `<article class="sheet ${core ? "tps-sheet" : "memo-view"}" aria-label="${e(titleFor(memo))}"><div class="sheet-bar">${core ? "Core memo" : "Memo"}</div>${core ? `<header class="tps-title"><${heading}>TPS Report</${heading}><p class="cover-subtitle">Cover sheet</p></header>` : ""}<dl class="memo-metadata"><div><dt>Version</dt><dd>${numberOf(memo)}</dd></div><div><dt>Status</dt><dd>${memo.archived ? "Archived" : "Active"}</dd></div>${memo.description ? `<div class="description"><dt>Description</dt><dd>${e(memo.description)}</dd></div>` : ""}</dl><div class="document-body${memo.text ? "" : " empty"}">${memo.text ? `<pre class="memo-text">${e(memo.text)}</pre>` : `<p class="empty-placeholder">${core ? "No instructions on file." : "This memo is empty."}</p>`}</div><div class="document-end" aria-hidden="true"></div></article>`;
+}
+
 function viewer(
   csrf: () => string,
   memo: MemoSnapshot,
@@ -57,20 +69,31 @@ function viewer(
   failed = false,
 ) {
   const core = memo.name === TPS_REPORT_KEY;
-  const action = (verb: string, label: string) =>
-    `<form method="post" enctype="multipart/form-data" action="${pathFor(memo.name)}/${verb}">${csrf()}${fence(memo)}<button class="secondary">${label}</button></form>`;
+  const action = (verb: string, label: string, explanation: string) =>
+    `<details class="memo-action"><summary>${label}</summary><p>${explanation}</p><form method="post" enctype="multipart/form-data" action="${pathFor(memo.name)}/${verb}">${csrf()}${fence(memo)}<button class="secondary">${label}</button></form></details>`;
   const controls = core
     ? ""
     : memo.archived
-      ? action("restore", "Restore memo")
-      : action("archive", "Archive memo");
+      ? action(
+          "restore",
+          "Restore memo",
+          "Restoring returns this memo to your active memos, available for assistants to read. Its history stays available.",
+        )
+      : action(
+          "archive",
+          "Archive memo",
+          "Archiving stops serving this memo to assistants. Its content and history stay available. You can restore it from Archived. Archiving can be refused at your daily write or retained-history limit. The history limit does not reset daily.",
+        );
   const guidance = core
-    ? "<aside><h2>Working preferences</h2><p>Ask your connected assistant to read TPS Report and help draft your working preferences. It uses explicit preferences you provide, asks useful follow-ups, and shows the complete draft for approval before saving. If none are available, ask for a TPS check.</p></aside>"
-    : `<p>${memo.archived ? "Restore this memo before asking your assistant to change it." : "Ask your connected assistant to change this memo."}</p>`;
+    ? memo.text
+      ? '<aside class="guidance"><p>To change these instructions, ask your connected assistant to update your TPS Report.</p><p class="small-note">Your permanent core memo. Included as TPS.md in Download all.</p></aside>'
+      : '<aside class="guidance"><h2>Your TPS Report is empty.</h2><p>Ask your connected assistant to draft your TPS Report using working preferences you’ve shared with it. It can ask useful follow-up questions. If it has no preferences to start from, it can begin with questions.</p><p>Approve the complete draft before it saves anything. You can also leave your TPS Report empty.</p><p class="small-note">New accounts start with only an empty TPS Report. Your assistant can create other memos when you need them.</p></aside>'
+    : `<aside class="guidance"><p>${memo.archived ? "Restore this memo first, then ask your connected assistant to update its instructions." : "To change these instructions, ask your connected assistant to update this memo."}</p></aside>`;
   return page(
     titleFor(memo),
-    `${nav}${message ? `<p role="${failed ? "alert" : "status"}">${e(message)}</p>` : ""}<article class="${core ? "tps-sheet" : "memo-view"}"><dl class="memo-metadata"><dt>Version</dt><dd>${numberOf(memo)}</dd><dt>Status</dt><dd>${memo.archived ? "Archived" : "Active"}</dd><dt>Description</dt><dd>${e(memo.description)}</dd></dl><p><a href="${pathFor(memo.name)}/history">Version history</a> · <a href="/download">Download all memos</a></p>${memo.text ? `<pre>${e(memo.text)}</pre>` : `<p>${core ? "TPS Report is empty." : "This memo is empty."}</p>`}</article>${guidance}${controls}`,
+    `${nav}${message ? `<p role="${failed ? "alert" : "status"}">${e(message)}</p>` : ""}<div class="topline"><p>${core ? "Permanent core memo" : "Your instructions, in writing"}</p><a href="${pathFor(memo.name)}/history">Version history</a></div>${memo.archived ? '<aside class="archive-status"><strong>Archived memo</strong><p>This memo is not served to assistants. Its content and history are kept.</p></aside>' : ""}${document(memo)}${guidance}${controls}`,
     code,
+    core ? "tps" : "memo",
   );
 }
 
@@ -249,8 +272,8 @@ export async function memoPages(
       store.usage(),
     ]);
     return page(
-      "Your memos",
-      `${nav}${status(url) ? `<p role="status">${e(status(url))}</p>` : ""}<ul class="memo-list"><li><a href="/tps-report">TPS Report</a><span>Version ${numberOf(tps)}</span><p>${e(tps.description)}</p></li></ul><section><h2>${archived ? "Archived memos" : "Your memos"}</h2>${memos.items.length ? `<ul class="memo-list">${memos.items.map((memo) => `<li><a href="${pathFor(memo.name)}">${e(memo.name)}</a><span>Version ${numberOf(memo)}</span><p>${e(memo.description)}</p></li>`).join("")}</ul>` : "<p>No memos here yet.</p>"}${memos.next_cursor ? `<a href="/?${archived ? "archived=1&amp;" : ""}cursor=${encodeURIComponent(memos.next_cursor)}">Older memos</a>` : ""}</section><section><h2>Usage</h2><p>${usage.memos} / ${usage.limits.memos} memos · ${usage.writes} / ${usage.limits.daily_writes} writes today · ${usage.tool_calls} / ${usage.limits.daily_calls} assistant calls today.</p><p>${usage.retained_bytes} / ${usage.limits.history_bytes} bytes of retained history. Daily caps reset at midnight UTC.</p></section><form method="post" action="/logout">${csrf()}<button class="secondary">Sign out</button></form><p>Signing out of this browser does not disconnect your assistants.</p>`,
+      "Your TPS Report",
+      `${nav}${status(url) ? `<p role="status">${e(status(url))}</p>` : ""}<div class="sheet"><div class="sheet-bar">Permanent core memo</div><ul class="memo-list"><li><div class="row-heading"><a href="/tps-report">View TPS Report</a><span>Version ${numberOf(tps)}</span></div><p>${e(tps.description) || "Your working preferences, ready when you are."}</p></li></ul></div><section><h2>${archived ? "Archived memos" : "Your memos"}</h2>${memos.items.length ? `<ul class="memo-list sheet">${memos.items.map((memo) => `<li><div class="row-heading"><a href="${pathFor(memo.name)}">${e(memo.name)}</a><span>Version ${numberOf(memo)}</span></div><p>${e(memo.description)}</p></li>`).join("")}</ul>` : archived ? "<p>No archived memos.</p>" : "<p>No other memos yet.</p><p>Ask your connected assistant to create a memo for something you do your way.</p>"}${memos.next_cursor ? `<a class="pagination" href="/?${archived ? "archived=1&amp;" : ""}cursor=${encodeURIComponent(memos.next_cursor)}">Older memos</a>` : ""}</section><section class="usage"><h2>Usage</h2><p>${usage.memos} / ${usage.limits.memos} memos · ${usage.writes} / ${usage.limits.daily_writes} writes today · ${usage.tool_calls} / ${usage.limits.daily_calls} assistant calls today.</p><p>${usage.retained_bytes} / ${usage.limits.history_bytes} bytes of retained history. Daily caps reset at midnight UTC.</p></section><form class="signout" method="post" action="/logout">${csrf()}<button class="secondary">Sign out</button></form><p class="small-note">Signing out of this browser does not disconnect your assistants.</p>`,
     );
   }
   if (
@@ -287,6 +310,6 @@ export async function memoPages(
   const labels = await names([selected.metadata.actor]);
   return page(
     `${titleFor(memo)}: version ${number}`,
-    `${nav}<p><a href="${pathFor(memo.name)}/history">Version history</a></p><p>${e(author(selected.metadata, labels))} · ${e(selected.metadata.created_at)}</p><p>${e(selected.metadata.reason)}</p><h2>Stored ${coreMatch ? "TPS Report" : "memo"}</h2><p>${e(selected.description)} · ${selected.archived ? "Archived" : "Active"}</p><pre>${e(selected.text)}</pre><h2>${number > 1 ? `Changes from version ${number - 1}` : "Initial version"}</h2><pre>${e(plainDiff(previous, selected))}</pre><form method="post" enctype="multipart/form-data" action="${pathFor(memo.name)}/revert">${csrf()}${fence(memo)}${hidden("source_version", String(number))}<p>Restoration creates a new version and keeps earlier versions. ${coreMatch ? "The restored TPS Report stays active." : `The restored memo will be ${selected.archived ? "archived" : "active"}.`}</p><button>Restore this version</button></form>`,
+    `${nav}<p><a href="${pathFor(memo.name)}/history">Version history</a></p><p>${e(author(selected.metadata, labels))} · ${e(selected.metadata.created_at)}</p><p>${e(selected.metadata.reason)}</p><h2>Stored ${coreMatch ? "TPS Report" : "memo"}</h2>${document(selected, "h2")}<h2>${number > 1 ? `Changes from version ${number - 1}` : "Initial version"}</h2><pre class="diff">${e(plainDiff(previous, selected))}</pre><form method="post" enctype="multipart/form-data" action="${pathFor(memo.name)}/revert">${csrf()}${fence(memo)}${hidden("source_version", String(number))}<p>Restoration creates a new version and keeps earlier versions. The stored version is not edited. ${coreMatch ? "The restored TPS Report stays active." : `The restored memo will be ${selected.archived ? "archived" : "active"}.`}</p><button>Restore this version</button></form>`,
   );
 }

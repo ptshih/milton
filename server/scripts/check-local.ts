@@ -11,6 +11,7 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { page, escapeHtml } from "../src/pages";
 import { checkMcp } from "./check-mcp";
+import { localAsset } from "./assets";
 
 const { values } = parseArgs({
   args: process.argv.slice(2),
@@ -65,11 +66,8 @@ const browser = Bun.serve({
         "<p>Return to the terminal for the check result.</p>",
       );
     }
-    if (url.pathname === "/milton.css")
-      return new Response(
-        Bun.file(new URL("../public/milton.css", import.meta.url)),
-        { headers: { "Content-Type": "text/css" } },
-      );
+    const asset = localAsset(request);
+    if (asset) return asset;
     return authorization
       ? page(
           "Connect the local check",

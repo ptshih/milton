@@ -1,152 +1,353 @@
-body {
-  margin: 0;
-  background: var(--ground);
-  color: var(--ink);
-  font-family: var(--font-sans);
+.app-shell {
+  max-width: 50rem;
+  margin: 0 auto;
+  padding: 2rem 2.5rem 4rem;
+}
+.app-shell.narrow {
+  max-width: 38rem;
+  padding-top: 4rem;
+}
+.app-header {
+  margin-bottom: 0.625rem;
 }
 main {
-  max-width: 38rem;
-  margin: 8vh auto;
-  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
-.brand {
-  display: inline-block;
-  margin-bottom: 2rem;
-  font-weight: 700;
+main > nav {
+  order: -1;
 }
 h1 {
-  font-size: clamp(2rem, 6vw, 3rem);
-  line-height: 1.1;
-  letter-spacing: -0.04em;
+  margin: 1.75rem 0 1.5rem;
+  font-size: clamp(2rem, 4vw, 2.5rem);
+}
+h2 {
+  font-size: 1.625rem;
+  margin: 0 0 1rem;
 }
 p {
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-}
-form {
-  display: grid;
-  gap: 0.75rem;
-  margin-top: 2rem;
-}
-button {
-  border: 1px solid var(--ink);
-  border-radius: 0.6rem;
-  padding: 0.9rem 1.2rem;
-  background: var(--ink);
-  color: var(--on-ink);
-  font: inherit;
-  font-weight: 650;
-  cursor: pointer;
-}
-button.secondary {
-  background: var(--bubble);
-  color: var(--ink);
-  border-color: var(--input);
-}
-a {
-  color: var(--ink);
-  text-underline-offset: 0.2em;
-}
-:focus-visible {
-  outline: 3px solid var(--ink);
-  outline-offset: 4px;
-}
-code {
-  font-size: 0.9em;
+  margin: 0 0 1rem;
 }
 nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem 1.25rem;
-  margin-bottom: 2rem;
-  line-height: 1.6;
+  gap: 0 1.375rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.875rem;
+}
+nav a,
+.topline a,
+.pagination {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+form {
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+.narrow form {
+  justify-items: stretch;
+}
+form p {
+  margin: 0;
 }
 label {
   display: grid;
   gap: 0.5rem;
-  font-weight: 600;
 }
-input,
-textarea {
-  box-sizing: border-box;
+input {
   min-width: 0;
-  width: 100%;
+  max-width: 100%;
   border: 1px solid var(--input);
-  border-radius: 0.5rem;
-  padding: 0.8rem;
-  background: var(--ground);
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: var(--surface);
   color: var(--ink);
   font: inherit;
-  line-height: 1.5;
 }
-textarea,
-pre {
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-}
-textarea {
-  resize: vertical;
+code {
+  font-size: 0.875em;
 }
 pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  padding: 1rem;
-  background: var(--bubble);
-  border-radius: 0.5rem;
-  line-height: 1.6;
+  word-break: normal;
+  margin: 0;
+  font: 0.875rem/1.85 var(--font-mono);
+  font-variant-ligatures: none;
 }
-section,
-details {
-  margin-top: 2.5rem;
+section {
+  margin-top: 2rem;
 }
-summary {
-  cursor: pointer;
-  padding-block: 0.5rem;
+.topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0 1.25rem;
+  margin: 1.25rem 0 0.875rem;
+}
+.topline p {
+  margin: 0;
+  font: 0.6875rem/1.5 var(--font-mono);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.topline a {
+  font-size: 0.8125rem;
+}
+.tps-title {
+  text-align: center;
+  padding: 2rem 1.375rem 1.75rem;
+}
+.tps-title h1,
+.tps-title h2 {
+  margin: 0;
+  font-size: clamp(2.25rem, 4vw, 3.25rem);
+  text-transform: uppercase;
+  letter-spacing: -0.03em;
+  line-height: 1.06;
+}
+.cover-subtitle {
+  display: inline-block;
+  margin: 0.875rem 0 0;
+  padding-bottom: 0.4375rem;
+  border-bottom: 1px solid var(--ink);
+  font: 600 1rem/1.4 var(--font-serif);
+  text-transform: uppercase;
+  letter-spacing: 0.26em;
+}
+.memo-metadata {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+  padding-inline: 1.5rem;
+}
+.memo-metadata > div {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding-block: 0.75rem;
+  border-bottom: 1px solid var(--input);
+  min-width: 0;
+}
+.memo-metadata > div:nth-child(2) {
+  justify-content: flex-end;
+}
+.memo-metadata .description {
+  grid-column: 1/-1;
+  display: block;
+}
+.memo-metadata dt {
+  font: 0.6875rem/1.6 var(--font-mono);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.memo-metadata dd {
+  margin: 0;
+  font-size: 0.875rem;
+}
+.description dd {
+  margin-top: 0.5rem;
+  padding-bottom: 0.25rem;
+  font-size: 0.9375rem;
+}
+.document-body {
+  padding: 1.75rem 1.5rem 2rem;
+}
+.document-body.empty {
+  min-height: 12.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.empty-placeholder {
+  max-width: 27ch;
+  margin: 0;
+  text-align: center;
+  color: var(--muted);
+  font: 0.875rem/1.7 var(--font-mono);
+}
+.document-end {
+  height: 4px;
+  border-block: 1px solid var(--input);
+  margin: 0 1.5rem 1.5rem;
+}
+.guidance {
+  padding-top: 1.375rem;
+  font-size: 0.875rem;
+}
+.guidance p {
+  max-width: 60ch;
+}
+.small-note,
+.guidance .small-note {
+  font-size: 0.8125rem;
+  color: var(--muted);
 }
 .memo-list,
 .history {
   list-style: none;
   padding: 0;
+  margin: 0;
 }
 .memo-list li,
 .history li {
-  border-bottom: 1px solid var(--hairline);
-  padding-block: 1.25rem;
+  padding: 1rem 1.25rem 1.25rem;
+}
+.memo-list li + li,
+.history li + li {
+  border-top: 1px solid var(--hairline);
+}
+.row-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0 0.75rem;
+  flex-wrap: wrap;
+}
+.row-heading a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font: 0.875rem/1.7 var(--font-mono);
   overflow-wrap: anywhere;
 }
-.memo-list li > a {
-  font-weight: 650;
-}
-.memo-list span {
-  display: block;
-  margin-top: 0.5rem;
+.row-heading span {
+  font: 0.75rem/1.5 var(--font-mono);
   color: var(--muted);
-  font-size: 0.9rem;
 }
-@media (max-width: 480px) {
-  main {
-    margin-block: 1.5rem;
-    padding: 1.25rem;
-  }
+.memo-list p {
+  font-size: 0.9375rem;
+  margin: 0;
 }
-
-.tps-sheet {
+.usage {
+  border-top: 1px solid var(--hairline);
+  padding-top: 1.5rem;
+}
+.usage p {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+.signout {
+  margin-bottom: 0.75rem;
+}
+.archive-status {
+  padding: 1.125rem 1.25rem;
+  margin-bottom: 1.5rem;
+  background: var(--band);
+  color: var(--on-band);
+  border-radius: 12px;
+}
+.archive-status strong {
+  display: block;
+  font-size: 1.0625rem;
+}
+.archive-status p {
+  margin: 0.375rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--band-muted);
+}
+.memo-action {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--hairline);
+}
+summary {
+  cursor: pointer;
+  padding-block: 0.5rem;
+  min-height: 44px;
+}
+.memo-action p {
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+}
+.history {
   border: 1px solid var(--hairline);
+  background: var(--surface);
+  border-radius: 6px;
+}
+.history a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font: 0.875rem/1.6 var(--font-mono);
+}
+.history p {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+}
+.history time {
+  color: var(--muted);
+}
+.diff {
+  background: var(--surface);
+  border: 1px solid var(--input);
+  border-radius: 8px;
   padding: 1.25rem;
 }
-.memo-metadata {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.5rem 1rem;
-  line-height: 1.6;
-}
-.memo-metadata dt {
-  font-weight: 650;
-}
-.memo-metadata dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-aside {
+.sheet + h2 {
   margin-top: 2rem;
+}
+[role="status"],
+[role="alert"] {
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--input);
+  border-radius: 12px;
+  background: var(--surface);
+  margin-block: 1.5rem;
+}
+[role="alert"] {
+  border-left: 4px solid var(--ink);
+}
+@media (max-width: 600px) {
+  .app-shell,
+  .app-shell.narrow {
+    padding: 1.25rem 1.25rem 2.5rem;
+  }
+  nav {
+    gap: 0 1.25rem;
+    font-size: 0.8125rem;
+  }
+  .sheet-bar {
+    padding-inline: 1rem;
+    font-size: 0.625rem;
+  }
+  .tps-title {
+    padding: 1.75rem 1rem 1.375rem;
+  }
+  .cover-subtitle {
+    font-size: 0.875rem;
+    letter-spacing: 0.2em;
+  }
+  .memo-metadata {
+    padding-inline: 1rem;
+  }
+  .memo-metadata > div {
+    gap: 0.4375rem;
+    flex-wrap: wrap;
+  }
+  .memo-metadata dd {
+    font-size: 0.8125rem;
+  }
+  .document-body {
+    padding: 1.5rem 1rem 1.75rem;
+  }
+  pre {
+    font-size: 0.8125rem;
+  }
+  .document-end {
+    margin-inline: 1rem;
+  }
+  .memo-list li,
+  .history li {
+    padding: 0.75rem 1rem 1rem;
+  }
 }

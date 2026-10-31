@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { folderMark } from "@milton/theme/brand";
 
 const theme = await readFile(
   new URL("../../packages/theme/base.css", import.meta.url),
@@ -9,6 +10,12 @@ const pages = await readFile(
   "utf8",
 );
 await mkdir(new URL("../public/", import.meta.url), { recursive: true });
+await cp(
+  new URL("../../packages/theme/public/", import.meta.url),
+  new URL("../public/", import.meta.url),
+  { recursive: true },
+);
+await writeFile(new URL("../public/favicon.svg", import.meta.url), folderMark);
 await writeFile(
   new URL("../public/milton.css", import.meta.url),
   `${theme}\n${pages}\n`,

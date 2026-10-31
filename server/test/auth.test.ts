@@ -6,7 +6,7 @@ import {
   NEON_AUTH_SESSION_CHALLENGE_COOKIE_NAME,
 } from "@neondatabase/auth/server";
 import { createMiltonApp } from "../src/index";
-import { navigation } from "../src/pages";
+import { navigation, page } from "../src/pages";
 import {
   resolveIdentityAccount,
   lookupIdentityAccount,
@@ -24,6 +24,40 @@ const signedQuery =
   "&redirect_uri=" +
   encodeURIComponent("http://localhost:9999/callback") +
   "&scope=openid%20profile&state=a%2Bb&sig=fixture%2Fsignature&ba_param=client_id&ba_param=resource&ba_param=sig";
+
+test("page fonts are local while the other browser restrictions stay closed", async () => {
+  const response = page("Example", "<p>Example</p>");
+  expect(response.headers.get("Content-Security-Policy")).toBe(
+    "default-src 'none'; script-src 'none'; style-src 'self'; img-src 'none'; font-src 'self'; connect-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
+  );
+  const { localAsset } = await import("../scripts/assets");
+  for (const [path, type] of [
+    ["/fonts/source-serif-4-semibold.woff2", "font/woff2"],
+    ["/fonts/jetbrains-mono-regular.woff2", "font/woff2"],
+    ["/favicon.svg", "image/svg+xml"],
+    ["/milton.css", "text/css; charset=utf-8"],
+  ]) {
+    const asset = localAsset(new Request(appOrigin + path));
+    expect(asset?.status).toBe(200);
+    expect(asset?.headers.get("Content-Type")).toBe(type);
+    expect((await asset!.arrayBuffer()).byteLength).toBeGreaterThan(100);
+    expect(
+      localAsset(new Request(appOrigin + path, { method: "POST" }))?.status,
+    ).toBe(405);
+    expect(
+      await localAsset(
+        new Request(appOrigin + path, { method: "HEAD" }),
+      )!.text(),
+    ).toBe("");
+  }
+  for (const path of [
+    "/fonts/unknown.woff2",
+    "/fonts/../secret",
+    "/fonts/%2e%2e/secret",
+    "/src/pages.ts",
+  ])
+    expect(localAsset(new Request(appOrigin + path))).toBeNull();
+});
 
 test("Neon server adapter preserves signed queries, cookies, sign-in admission and Allow/Deny", async () => {
   const local = await localStore();
@@ -301,7 +335,7 @@ test("Neon server adapter preserves signed queries, cookies, sign-in admission a
     ).toBe(400);
     const home = await send("/");
     const homeHtml = await home.text();
-    expect(homeHtml).toContain("<h1>Your memos</h1>");
+    expect(homeHtml).toContain("<h1>Your TPS Report</h1>");
     expect(homeHtml).toContain("<h2>Your memos</h2>");
     expect(homeHtml.indexOf('href="/tps-report"')).toBeLessThan(
       homeHtml.indexOf("<h2>Your memos</h2>"),
@@ -925,7 +959,7 @@ test("read-only memo pages reject removed forms and recover stored ordinary and 
     const archived = (await fixture.store.getMemo(memo.name))!;
     const archivedView = await (await fixture.send("/memos/tps-report")).text();
     expect(archivedView).toContain(
-      "Restore this memo before asking your assistant to change it.",
+      "Restore this memo first, then ask your connected assistant to update its instructions.",
     );
     expect(archivedView).toContain('action="/memos/tps-report/restore"');
     const conflict = await fixture.send("/memos/tps-report/archive", fields);
@@ -1024,7 +1058,7 @@ test("read-only memo pages reject removed forms and recover stored ordinary and 
     const legacyView = await (
       await fixture.send("/tps-report/history/4")
     ).text();
-    expect(legacyView).toContain("· Archived</p>");
+    expect(legacyView).toContain("<dt>Status</dt><dd>Archived</dd>");
     expect(legacyView).toContain("The restored TPS Report stays active.");
     const repairedHead = await fixture.store.getTpsReport();
     expect(repairedHead.version).not.toBe(emptyHead.version);
