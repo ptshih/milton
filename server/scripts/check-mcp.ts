@@ -15,7 +15,7 @@ export async function checkMcp(client: Client, store = false) {
   );
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((tool) => tool.name).sort(), [
-    ...(store ? ["archive_memo", "create_memo"] : []),
+    ...(store ? ["archive_memo", "check_draft", "create_memo"] : []),
     "get_memo",
     "get_tps_report",
     "list_memos",
@@ -41,6 +41,14 @@ export async function checkMcp(client: Client, store = false) {
     { name: "get_memo", arguments: { name: first ?? "milton-check-no-memo" } },
     { name: "get_tps_report", arguments: {} },
     { name: "search", arguments: { words: "TPS Report" } },
+    ...(store
+      ? [
+          {
+            name: "check_draft",
+            arguments: { draft: "A short connection-check draft." },
+          },
+        ]
+      : []),
   ]) {
     const result = await client.callTool(call);
     if (call.name === "get_memo" && !first)
@@ -56,7 +64,7 @@ export async function checkMcp(client: Client, store = false) {
       `${call.name} returned no content`,
     );
   }
-  return `initialize: instructions present; tools: ${store ? "exactly nine" : "exactly four"}; calls: four answered`;
+  return `initialize: instructions present; tools: ${store ? "exactly ten" : "exactly four"}; calls: ${store ? "five" : "four"} answered`;
 }
 
 if (import.meta.main) {

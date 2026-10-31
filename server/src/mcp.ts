@@ -12,9 +12,10 @@ import {
   archiveInput,
 } from "./store/writes";
 import { tpsCheckGuide } from "./tps-check";
+import { checkDraftInput } from "./draft-check";
 
 export const storeInstructions =
-  "Before working for or as the person, call get_tps_report and a relevant ordinary memo. If get_tps_report returns is_template: true, TPS Report is not set up yet; if you have not offered TPS setup in this conversation, briefly offer it once. Do not repeat the offer if the person declines, skips it, or changes the subject. If they agree or ask for setup, call tps_check and follow its guide: use available explicit preferences first, ask useful follow-ups, and show the complete draft for approval before saving. Use the questionnaire when preferences are unavailable. Confirm only after a successful save; report failed, conflicting or uncertain outcomes honestly and never retry blindly. Do not offer setup when TPS Report is customized. Use update_tps_report for general working preferences and update_memo for task-specific instructions. After a conflict or a person’s restoration, read the current head before another write.";
+  "Before working for or as the person, call get_tps_report and a relevant ordinary memo. If get_tps_report returns is_template: true, TPS Report is not set up yet; if you have not offered TPS setup in this conversation, briefly offer it once. Do not repeat the offer if the person declines, skips it, or changes the subject. If they agree or ask for setup, call tps_check and follow its guide: use available explicit preferences first, ask useful follow-ups, and show the complete draft for approval before saving. Use the questionnaire when preferences are unavailable. Confirm only after a successful save; report failed, conflicting or uncertain outcomes honestly and never retry blindly. Do not offer setup when TPS Report is customized. Use update_tps_report for general working preferences and update_memo for task-specific instructions. After a conflict or a person’s restoration, read the current head before another write. Before showing a draft, call check_draft with its text and a relevant ordinary memo name when applicable, then check and revise it against the returned rules.";
 
 export interface ToolCall {
   client: string;
@@ -152,6 +153,17 @@ export function createMiltonServer(
     async (args) => tools.search(args.words, pageInput.parse(args).cursor),
   );
   if (store) {
+    const storeTools = createStoreMemoTools(store);
+    server.registerTool(
+      "check_draft",
+      {
+        description:
+          "Return a draft, TPS Report, an optional named active memo, and a review guide. The assistant judges the draft; Milton makes no model call and saves no draft or memo changes. Omit name for TPS-only coverage. Draft limit: 32 KiB UTF-8.",
+        inputSchema: checkDraftInput,
+        annotations,
+      },
+      async (args) => storeTools.check_draft(args),
+    );
     server.registerTool(
       "tps_check",
       {
@@ -162,7 +174,6 @@ export function createMiltonServer(
       },
       async () => ({ content: [{ type: "text", text: tpsCheckGuide }] }),
     );
-    const writes = createStoreMemoTools(store);
     const mutating = {
       readOnlyHint: false,
       destructiveHint: false,
@@ -177,7 +188,7 @@ export function createMiltonServer(
         inputSchema: createInput,
         annotations: mutating,
       },
-      async (args) => writes.create_memo(args),
+      async (args) => storeTools.create_memo(args),
     );
     server.registerTool(
       "update_memo",
@@ -187,7 +198,7 @@ export function createMiltonServer(
         inputSchema: updateInput,
         annotations: mutating,
       },
-      async (args) => writes.update_memo(args),
+      async (args) => storeTools.update_memo(args),
     );
     server.registerTool(
       "update_tps_report",
@@ -197,7 +208,7 @@ export function createMiltonServer(
         inputSchema: updateTpsReportInput,
         annotations: mutating,
       },
-      async (args) => writes.update_tps_report(args),
+      async (args) => storeTools.update_tps_report(args),
     );
     server.registerTool(
       "archive_memo",
@@ -207,7 +218,7 @@ export function createMiltonServer(
         inputSchema: archiveInput,
         annotations: mutating,
       },
-      async (args) => writes.archive_memo(args),
+      async (args) => storeTools.archive_memo(args),
     );
   }
   return server;

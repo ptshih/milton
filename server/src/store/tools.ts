@@ -7,6 +7,7 @@ import {
   type TenantStore,
 } from "./index";
 import { isTpsReportTemplate } from "../tps-check";
+import { draftCheckGuide, type CheckDraftInput } from "../draft-check";
 
 export function storeResult(value: unknown, isError = false): ToolResult {
   return {
@@ -34,6 +35,36 @@ export function createStoreMemoTools(store: TenantStore) {
     }
   }
   return {
+    check_draft({ draft, name }: CheckDraftInput) {
+      return run(async () => {
+        if (name === TPS_REPORT_KEY)
+          throw new StoreError(
+            "tps_report_required",
+            "TPS Report is included automatically. Omit name or choose an ordinary memo.",
+            422,
+          );
+        const memo = name === undefined ? null : await store.getMemo(name);
+        if (name !== undefined && (!memo || memo.archived))
+          throw new StoreError("not_found", "This memo does not exist.", 404);
+        // Read without getTpsReport's repair writes: this tool only gathers rules.
+        const core = await store.getMemo(TPS_REPORT_KEY);
+        if (!core || core.archived)
+          throw new StoreError(
+            "tps_report_unavailable",
+            "Read TPS Report with get_tps_report before checking this draft.",
+            409,
+          );
+        return storeResult({
+          draft,
+          tps_report: {
+            ...tpsReportSnapshot(core),
+            is_template: isTpsReportTemplate(core.text),
+          },
+          memo,
+          instructions: draftCheckGuide,
+        });
+      });
+    },
     create_memo(input: CreateInput) {
       return run(async () => storeResult(await store.createMemo(input)));
     },

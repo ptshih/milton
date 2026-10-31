@@ -37,15 +37,6 @@ connected assistant read and write; nothing here blocks the cutover.
       is valid; it covers every connection sharing that client id, not single devices. Needs the
       page's connected-clients list first. Neon docs: auth/guides/plugins/oauth-provider.
 
-- [ ] #3 (server, low) **Check drafts against memos.** Decided 2026-10-29:
-      the assistant judges, Milton supplies the rules. A future tool takes a draft and an
-      optional memo name, returns the relevant memos and a short judging instruction
-      (check each rule, quote the breaking line, give a verdict); Milton makes no model call.
-      Choose the tool name and verdict wording when building it. Plus one line in the standing
-      instruction asking assistants to check their own drafts before showing them. It judges
-      drafts against rules, never the person. A Milton-side judge on the page (model cost,
-      abuse limits) is deliberately later. Ships after the write tools.
-
 - [ ] #6 (site, low, founder) **Give Milton a Hawaiian shirt on Fridays.** Deferred 2026-10-30:
       Peter rejected the shirt beside the folder and wants to revisit the idea later.
       Keep the ordinary folder. If resumed, Friday follows each visitor's local time zone;

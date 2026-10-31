@@ -191,6 +191,7 @@ preserved; TPS recovery stays active, including from legacy archived sources.
 | `get_tps_report()`                                                | Read/repair TPS; public title, description, body, opaque version, active flag and template status. |
 | `update_tps_report(text, reason, expected_version, description?)` | Append a fenced TPS version; empty text allowed, no name parameter.                                |
 | `tps_check()`                                                     | Static preference-drafting guide; no model call or write.                                          |
+| `check_draft(draft, name?)`                                       | Exact draft, active TPS and optional named memo, plus an assistant review guide; no model call or content write. |
 | `list_memos(cursor?)`, `get_memo(name)`                           | Active ordinary memos, versioned and paginated.                                                    |
 | `search(words, cursor?)`                                          | Literal case-insensitive search; distinguish TPS title hits from ordinary name hits with kind.     |
 | `create_memo(name, description, text)`                            | New ordinary version 1; existing names are never overwritten.                                      |
@@ -211,6 +212,15 @@ memory. Show the full draft, obtain approval, save with update_tps_report and co
 only after success. Preserve the draft and report rejected/conflicting/uncertain writes
 honestly. General working preferences go to TPS; task instructions go to ordinary memos.
 After person recovery, read the new head before another assistant write.
+
+Before showing a draft, use `check_draft` and revise against the returned rules.
+The assistant judges; Milton supplies versioned rules and a guide, not a verdict.
+Coverage is TPS plus the optional named active ordinary memo, never an implied check
+of every memo. Drafts are nonblank UTF-8 text up to 32 KiB, with no NUL; the request
+limit still applies. The draft is returned unchanged and not persisted or logged by
+the application. This read counts toward attempted calls, not writes. Empty TPS
+supplies no default preferences. Missing/archived TPS must be read through
+`get_tps_report` to repair it; draft checking never repairs or authors content.
 
 ### Who may write
 

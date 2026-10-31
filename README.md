@@ -18,6 +18,9 @@ hands over the right one.
   `get_tps_report`, `list_memos`, `get_memo`, and `search`; `tps_check` guides a complete
   draft for your approval. They author content with `update_tps_report`, `create_memo`,
   and `update_memo`. `archive_memo` stops serving an ordinary memo to assistants.
+- **Draft checks.** `check_draft` supplies TPS Report, an optional named memo, and a
+  review guide. Your assistant judges the draft against those rules; Milton makes
+  no model call and does not save the draft.
 - **Every version is kept.** The read-only app at `https://app.meetmilton.com` shows
   content, history, and diffs. You can archive or restore ordinary memos and restore a
   stored version of any memo, including TPS, as a new version. TPS stays active.
