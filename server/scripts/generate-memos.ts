@@ -1,10 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { loadRecipes } from "../src/recipes";
+import { loadMemos } from "../src/memos";
 
 await mkdir(new URL("../generated/", import.meta.url), { recursive: true });
-const templates = await loadRecipes(
-  new URL("../../templates/", import.meta.url),
-);
+const templates = await loadMemos(new URL("../../templates/", import.meta.url));
 await writeFile(
   new URL("../generated/templates.json", import.meta.url),
   `${JSON.stringify(

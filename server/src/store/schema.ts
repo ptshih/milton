@@ -18,7 +18,7 @@ import {
 const createdAt = () =>
   timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const limits = {
-  recipes: 100,
+  memos: 100,
   body_bytes: 32768,
   name_bytes: 64,
   description_bytes: 500,
@@ -97,8 +97,8 @@ export const identities = pgTable(
     ),
   ],
 );
-export const recipes = pgTable(
-  "recipes",
+export const memos = pgTable(
+  "memos",
   {
     userId: text("user_id")
       .notNull()
@@ -111,18 +111,18 @@ export const recipes = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.userId, t.id] }),
-    unique("recipes_user_name").on(t.userId, t.name),
+    unique("memos_user_name").on(t.userId, t.name),
     check(
-      "recipes_slug",
+      "memos_slug",
       sql`${t.name} ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND ${t.name} !~ '[^a-z0-9-]'`,
     ),
   ],
 );
-export const recipeVersions = pgTable(
-  "recipe_versions",
+export const memoVersions = pgTable(
+  "memo_versions",
   {
     userId: text("user_id").notNull(),
-    recipeId: text("recipe_id").notNull(),
+    memoId: text("memo_id").notNull(),
     version: integer("version").notNull(),
     description: text("description").notNull(),
     body: text("body").notNull(),
@@ -138,23 +138,23 @@ export const recipeVersions = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
-    primaryKey({ columns: [t.userId, t.recipeId, t.version] }),
+    primaryKey({ columns: [t.userId, t.memoId, t.version] }),
     foreignKey({
-      name: "versions_recipe",
-      columns: [t.userId, t.recipeId],
-      foreignColumns: [recipes.userId, recipes.id],
+      name: "memo_versions_memo",
+      columns: [t.userId, t.memoId],
+      foreignColumns: [memos.userId, memos.id],
     }).onDelete("cascade"),
-    check("versions_positive", sql`${t.version} >= 1`),
+    check("memo_versions_positive", sql`${t.version} >= 1`),
     check(
-      "versions_description",
+      "memo_versions_description",
       sql`${t.description} <> '' AND position(chr(10) in ${t.description}) = 0 AND position(chr(13) in ${t.description}) = 0`,
     ),
     check(
-      "versions_actor_object",
+      "memo_versions_actor_object",
       sql`jsonb_typeof(${t.actorJson}::jsonb) = 'object'`,
     ),
     check(
-      "versions_details_object",
+      "memo_versions_details_object",
       sql`jsonb_typeof(${t.detailsJson}::jsonb) = 'object'`,
     ),
   ],

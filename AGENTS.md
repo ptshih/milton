@@ -1,19 +1,19 @@
 # Milton: instructions for agents
 
-Milton holds Peter's recipes (how he wants things done) and will serve them to every assistant he
+Milton holds Peter's memos (how he wants things done) and will serve them to every assistant he
 uses through a private MCP server. [SPEC.md](SPEC.md) is the plan and the order of work; the
 [README](README.md) says what is here.
 
 ## Stop first
 
-- **Recipes are served to outside assistants.** Every recipe is served to claude.ai,
-  ChatGPT, Muse and others. Never put anything about employers, investors, customers, secrets or other people's private details in a recipe, a fixture, a commit message or a
+- **Memos are served to outside assistants.** Every memo is served to claude.ai,
+  ChatGPT, Muse and others. Never put anything about employers, investors, customers, secrets or other people's private details in a memo, a fixture, a commit message or a
   log.
-- **Recipes change only through Peter.** Assistants save what he tells them through Milton's write
-  tools; every write is a kept version he can revert on the page. Never edit his recipes on your own
+- **Memos change only through Peter.** Assistants save what he tells them through Milton's write
+  tools; every write is a kept version he can revert on the page. Never edit his memos on your own
   initiative.
-- **Peter's recipes live on the server.** Claude Code, Codex and Pi read them from the Milton MCP
-  server (`https://mcp.meetmilton.com/mcp`). Change recipes through Milton, not by editing files;
+- **Peter's memos live on the server.** Claude Code, Codex and Pi read them from the Milton MCP
+  server (`https://mcp.meetmilton.com/mcp`). Change memos through Milton, not by editing files;
   the repository holds only the starter templates.
 - **A push publishes.** Push only when Peter asks. Neither Vercel project (`milton-site` for
   `meetmilton.com`, `milton-mcp` for `mcp.meetmilton.com`) deploys on a push; deploys run from

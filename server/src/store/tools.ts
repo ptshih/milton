@@ -1,7 +1,12 @@
 import type { CreateInput, UpdateInput, ArchiveInput } from "./writes";
 import type { ToolResult } from "../tools";
-import { StoreError, type TenantStore } from "./index";
-import { isVibesTemplate } from "../vibe-check";
+import {
+  StoreError,
+  TPS_REPORT_KEY,
+  tpsReportSnapshot,
+  type TenantStore,
+} from "./index";
+import { isTpsReportTemplate } from "../tps-check";
 
 export function storeResult(value: unknown, isError = false): ToolResult {
   return {
@@ -10,7 +15,7 @@ export function storeResult(value: unknown, isError = false): ToolResult {
   };
 }
 
-export function createStoreRecipeTools(store: TenantStore) {
+export function createStoreMemoTools(store: TenantStore) {
   async function run(operation: () => Promise<ToolResult>) {
     try {
       return await operation();
@@ -22,48 +27,62 @@ export function createStoreRecipeTools(store: TenantStore) {
           message:
             error instanceof StoreError
               ? error.message
-              : "The recipe store is unavailable. Try again.",
+              : "The memo store is unavailable. Try again.",
         },
         true,
       );
     }
   }
   return {
-    create_recipe(input: CreateInput) {
-      return run(async () => storeResult(await store.createRecipe(input)));
+    create_memo(input: CreateInput) {
+      return run(async () => storeResult(await store.createMemo(input)));
     },
-    update_recipe(input: UpdateInput) {
-      return run(async () => storeResult(await store.updateRecipe(input)));
+    update_memo(input: UpdateInput) {
+      return run(async () => storeResult(await store.updateMemo(input)));
     },
-    archive_recipe(input: ArchiveInput) {
-      return run(async () => storeResult(await store.archiveRecipe(input)));
+    update_tps_report(input: Omit<UpdateInput, "name">) {
+      return run(async () =>
+        storeResult(tpsReportSnapshot(await store.updateTpsReport(input))),
+      );
     },
-    list_recipes(cursor?: string) {
+    archive_memo(input: ArchiveInput) {
       return run(async () => {
-        const page = await store.listRecipes(cursor);
+        const { name, version, archived } = await store.archiveMemo(input);
+        return storeResult({ name, version, archived });
+      });
+    },
+    list_memos(cursor?: string) {
+      return run(async () => {
+        const page = await store.listMemos(cursor);
         return storeResult({
-          recipes: page.items,
+          memos: page.items,
           next_cursor: page.next_cursor,
         });
       });
     },
-    get_recipe(name: string) {
+    get_memo(name: string) {
       return run(async () => {
-        const recipe = await store.getRecipe(name);
-        return recipe
-          ? storeResult(recipe)
+        if (name === TPS_REPORT_KEY)
+          throw new StoreError(
+            "tps_report_required",
+            "Use get_tps_report to read TPS Report.",
+            422,
+          );
+        const memo = await store.getMemo(name);
+        return memo && !memo.archived
+          ? storeResult(memo)
           : storeResult(
-              { error: "not_found", message: "This recipe does not exist." },
+              { error: "not_found", message: "This memo does not exist." },
               true,
             );
       });
     },
-    get_vibes() {
+    get_tps_report() {
       return run(async () => {
-        const recipe = await store.getVibes();
+        const memo = await store.getTpsReport();
         return storeResult({
-          ...recipe,
-          is_template: isVibesTemplate(recipe.text),
+          ...tpsReportSnapshot(memo),
+          is_template: isTpsReportTemplate(memo.text),
         });
       });
     },

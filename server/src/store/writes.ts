@@ -2,7 +2,13 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { databaseFailure, type StoreDatabase } from "./database";
 import { StoreError } from "./errors";
-import { readLimits, utf8Bytes, type RecipeSnapshot } from "./index";
+import {
+  readLimits,
+  utf8Bytes,
+  TPS_REPORT_KEY,
+  tpsReportSnapshot,
+  type MemoSnapshot,
+} from "./index";
 import { parseVersionTag, versionTag } from "./versions";
 
 const text = z
@@ -22,6 +28,7 @@ export const updateInput = z.strictObject({
   expected_version,
   description: description.optional(),
 });
+export const updateTpsReportInput = updateInput.omit({ name: true });
 export const archiveInput = z.strictObject({
   name,
   reason: text,
@@ -52,7 +59,7 @@ type Head = {
   version: number;
   archived: boolean;
 };
-const headSnapshot = (row: Head): RecipeSnapshot => ({
+const headSnapshot = (row: Head): MemoSnapshot => ({
   name: row.name,
   description: row.description,
   text: row.body,
@@ -60,10 +67,14 @@ const headSnapshot = (row: Head): RecipeSnapshot => ({
   archived: row.archived,
 });
 
-export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
+export function memoWrites(db: StoreDatabase, userId: string, actor?: Actor) {
   type Operation =
     "create" | "update" | "archive" | "restore" | "revert" | "delete";
-  async function write(kind: Operation, raw: unknown): Promise<RecipeSnapshot> {
+  async function write(
+    kind: Operation,
+    raw: unknown,
+    coreUpdate = false,
+  ): Promise<MemoSnapshot> {
     const schema =
       kind === "create"
         ? createInput
@@ -80,7 +91,7 @@ export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
     if (!parsed.success)
       throw new StoreError(
         "invalid_input",
-        "Check the recipe fields and try again.",
+        "Check the memo fields and try again.",
         400,
       );
     const input = parsed.data;
@@ -92,6 +103,12 @@ export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
       throw new StoreError(
         "person_required",
         "This action requires your signed-in browser session.",
+        403,
+      );
+    if (actor.kind === "person" && (kind === "create" || kind === "update"))
+      throw new StoreError(
+        "assistant_required",
+        "Ask your connected assistant to author memo content.",
         403,
       );
     try {
@@ -109,10 +126,10 @@ export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
             403,
           );
         const limits = await readLimits(tx);
-        if (input.name === "vibes" && (kind === "archive" || kind === "delete"))
+        if (input.name === TPS_REPORT_KEY && kind !== "revert" && !coreUpdate)
           throw new StoreError(
-            "vibes_required",
-            "Your vibes can be edited and reverted, not archived or deleted.",
+            "tps_report_required",
+            "Use the dedicated TPS Report tools. TPS Report cannot be archived or deleted.",
             422,
           );
         const fields: [string, number, string][] = [
@@ -135,32 +152,49 @@ export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
         for (const [value, limit, field] of fields)
           if (utf8Bytes(value) > limit)
             throw new StoreError(
-              `recipe_${field}_limit`,
-              `The recipe ${field} exceeds its size limit.`,
+              `memo_${field}_limit`,
+              `The memo ${field} exceeds its size limit.`,
               422,
             );
         const row = (
           await tx.query<Head>(sql`SELECT r.id,r.name,v.description,v.body,v.version,v.archived
-          FROM recipes r JOIN recipe_versions v ON v.user_id=r.user_id AND v.recipe_id=r.id
+          FROM memos r JOIN memo_versions v ON v.user_id=r.user_id AND v.memo_id=r.id
           WHERE r.user_id=${userId} AND r.name=${input.name}
           ORDER BY v.version DESC LIMIT 1 FOR UPDATE OF r`)
         )[0];
+        if (actor.kind === "assistant" && row?.archived)
+          throw new StoreError(
+            "memo_archived",
+            "Restore this memo in Milton before asking an assistant to change it.",
+            409,
+            {
+              current: {
+                ...(row.name === TPS_REPORT_KEY
+                  ? { title: "TPS Report" }
+                  : { name: row.name }),
+                version: versionTag(row.name, row.version, row.id),
+                archived: true,
+              },
+            },
+          );
         const conflict = () =>
           new StoreError(
-            "recipe_version_conflict",
-            "Read the current recipe before trying another write.",
+            "memo_version_conflict",
+            "Read the current memo before trying another write.",
             409,
-            { current: row ? headSnapshot(row) : null },
+            {
+              current: row
+                ? row.name === TPS_REPORT_KEY
+                  ? tpsReportSnapshot(headSnapshot(row))
+                  : headSnapshot(row)
+                : null,
+            },
           );
         if (kind === "create") {
-          if (row || input.name === "vibes") throw conflict();
+          if (row) throw conflict();
         } else {
           if (!row)
-            throw new StoreError(
-              "not_found",
-              "This recipe does not exist.",
-              404,
-            );
+            throw new StoreError("not_found", "This memo does not exist.", 404);
           const tag =
             "expected_version" in input
               ? parseVersionTag(input.expected_version)
@@ -177,11 +211,11 @@ export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
           if (!("confirmation" in input) || input.confirmation !== input.name)
             throw new StoreError(
               "confirmation_required",
-              "Type the recipe name exactly to delete it.",
+              "Type the memo name exactly to delete it.",
               400,
             );
           await tx.query(
-            sql`DELETE FROM recipes WHERE user_id=${userId} AND id=${row!.id}`,
+            sql`DELETE FROM memos WHERE user_id=${userId} AND id=${row!.id}`,
           );
           return headSnapshot(row!);
         }
@@ -190,19 +224,19 @@ export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
           (kind === "restore" && !row!.archived)
         )
           throw new StoreError(
-            "recipe_state_conflict",
-            "The recipe is already in that state. Read it again.",
+            "memo_state_conflict",
+            "The memo is already in that state. Read it again.",
             409,
           );
         let source = row;
         if (kind === "revert" && "source_version" in input) {
           const chosen = (
             await tx.query<Head>(sql`SELECT ${row!.id} AS id,${row!.name} AS name,description,body,version,archived
-            FROM recipe_versions WHERE user_id=${userId} AND recipe_id=${row!.id} AND version=${input.source_version}`)
+            FROM memo_versions WHERE user_id=${userId} AND memo_id=${row!.id} AND version=${input.source_version}`)
           )[0];
           if (!chosen)
             throw new StoreError(
-              "recipe_recovery_invalid",
+              "memo_recovery_invalid",
               "That stored version is unavailable for recovery.",
               422,
             );
@@ -221,7 +255,7 @@ export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
           if (!charged.length)
             throw new StoreError(
               "rate_limited",
-              "The daily recipe write limit has been reached.",
+              "The daily memo write limit has been reached.",
               429,
               {
                 limit: "writes",
@@ -233,7 +267,7 @@ export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
           kind === "create"
             ? (
                 await tx.query<{ id: string }>(
-                  sql`INSERT INTO recipes (user_id,name) VALUES (${userId},${input.name}) RETURNING id`,
+                  sql`INSERT INTO memos (user_id,name) VALUES (${userId},${input.name}) RETURNING id`,
                 )
               )[0]!.id
             : row!.id;
@@ -244,7 +278,7 @@ export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
             ? input.description
             : source!.description;
         const archived =
-          input.name === "vibes"
+          input.name === TPS_REPORT_KEY
             ? false
             : kind === "archive"
               ? true
@@ -253,11 +287,13 @@ export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
                 : source!.archived;
         const reason =
           kind === "create"
-            ? "Created recipe"
+            ? "Created memo"
             : kind === "restore"
-              ? "Restored recipe"
+              ? "Restored memo"
               : kind === "revert"
-                ? `Reverted to version ${source!.version}`
+                ? input.name === TPS_REPORT_KEY
+                  ? `Restored TPS Report from version ${source!.version}`
+                  : `Reverted to version ${source!.version}`
                 : "reason" in input && typeof input.reason === "string"
                   ? input.reason
                   : "";
@@ -265,7 +301,7 @@ export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
           kind,
           ...(recovery ? { source_version: source!.version } : {}),
         };
-        await tx.query(sql`INSERT INTO recipe_versions (user_id,recipe_id,version,description,body,archived,reason,actor_json,details_json)
+        await tx.query(sql`INSERT INTO memo_versions (user_id,memo_id,version,description,body,archived,reason,actor_json,details_json)
           VALUES (${userId},${id},${number},${desc},${body},${archived},${reason},${JSON.stringify(actor)},${JSON.stringify(details)})`);
         return headSnapshot({
           id,
@@ -281,20 +317,21 @@ export function recipeWrites(db: StoreDatabase, userId: string, actor?: Actor) {
       if (failure.code === "store_unavailable")
         throw new StoreError(
           "store_unavailable",
-          "The write outcome is unavailable. Read the current recipe before retrying.",
+          "The write outcome is unavailable. Read the current memo before retrying.",
         );
       throw failure;
     }
   }
   return {
-    createRecipe: (input: CreateInput) => write("create", input),
-    updateRecipe: (input: UpdateInput) => write("update", input),
-    archiveRecipe: (input: ArchiveInput) => write("archive", input),
-    restoreRecipe: (input: z.infer<typeof restoreInput>) =>
+    createMemo: (input: CreateInput) => write("create", input),
+    updateMemo: (input: UpdateInput) => write("update", input),
+    updateTpsReport: (input: Omit<UpdateInput, "name">) =>
+      write("update", { ...input, name: TPS_REPORT_KEY }, true),
+    archiveMemo: (input: ArchiveInput) => write("archive", input),
+    restoreMemo: (input: z.infer<typeof restoreInput>) =>
       write("restore", input),
-    revertRecipe: (input: z.infer<typeof recoveryInput>) =>
+    revertMemo: (input: z.infer<typeof recoveryInput>) =>
       write("revert", input),
-    deleteRecipe: (input: z.infer<typeof deleteInput>) =>
-      write("delete", input),
+    deleteMemo: (input: z.infer<typeof deleteInput>) => write("delete", input),
   };
 }

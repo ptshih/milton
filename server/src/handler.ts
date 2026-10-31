@@ -86,7 +86,7 @@ export function createMiltonHandler(
       const bounded = await boundRequest(request);
       if (bounded instanceof Response) return withMcpCors(bounded);
       const identity = await verify(request.headers.get("Authorization"));
-      const bindings = { ...config, RECIPES_SOURCE: "store" };
+      const bindings = { ...config, MEMOS_SOURCE: "store" };
       const auth = await lookupIdentityAccount(bindings, {
         provider: "neon",
         subject: identity.subject,

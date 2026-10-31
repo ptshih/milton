@@ -1,20 +1,20 @@
 import { zipSync } from "fflate";
-import { StoreError, type RecipeSnapshot } from "./store";
+import { StoreError, TPS_REPORT_KEY, type MemoSnapshot } from "./store";
 
-export function recipeArchive(recipes: readonly RecipeSnapshot[]) {
+export function memoArchive(memos: readonly MemoSnapshot[]) {
   const files: Record<string, Uint8Array> = Object.create(null);
   const encode = (text: string) => new TextEncoder().encode(text);
   let bytes = 0;
-  for (const recipe of recipes) {
-    if (recipe.archived) continue;
-    files[`${recipe.name}/SKILL.md`] = encode(
-      `---\nname: ${JSON.stringify(recipe.name)}\ndescription: ${JSON.stringify(recipe.description)}\n---\n${recipe.text}`,
+  for (const memo of memos) {
+    if (memo.archived) continue;
+    const path =
+      memo.name === TPS_REPORT_KEY ? "TPS.md" : `${memo.name}/SKILL.md`;
+    files[path] = encode(
+      memo.name === TPS_REPORT_KEY
+        ? memo.text
+        : `---\nname: ${JSON.stringify(memo.name)}\ndescription: ${JSON.stringify(memo.description)}\n---\n${memo.text}`,
     );
-    bytes += files[`${recipe.name}/SKILL.md`]!.length;
-    if (recipe.name === "vibes") {
-      files["VIBES.md"] = encode(recipe.text);
-      bytes += files["VIBES.md"].length;
-    }
+    bytes += files[path]!.length;
     if (bytes > 4_000_000)
       throw new StoreError(
         "download_too_large",
@@ -32,11 +32,11 @@ export function recipeArchive(recipes: readonly RecipeSnapshot[]) {
   return archive;
 }
 
-export function downloadResponse(recipes: readonly RecipeSnapshot[]) {
-  return new Response(recipeArchive(recipes), {
+export function downloadResponse(memos: readonly MemoSnapshot[]) {
+  return new Response(memoArchive(memos), {
     headers: {
       "Content-Type": "application/zip",
-      "Content-Disposition": 'attachment; filename="milton-recipes.zip"',
+      "Content-Disposition": 'attachment; filename="milton-memos.zip"',
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
     },

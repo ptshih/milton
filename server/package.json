@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "generate": "bun scripts/generate-recipes.ts",
+    "generate": "bun scripts/generate-memos.ts",
     "build": "bun run generate && bun scripts/build.ts",
     "check-types": "bun run build && tsc --noEmit",
     "dev": "bun run build && bun scripts/dev.ts",

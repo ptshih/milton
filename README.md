@@ -11,26 +11,27 @@ hands over the right one.
 
 ## How it works
 
-- **Recipes.** Your instructions live as a few short recipes in the Agent Skills format: `vibes`
-  for how you want any assistant to work with you, plus one per thing you do your way, like
-  `email-voice`.
-- **One MCP server.** Assistants connect to `https://mcp.meetmilton.com/mcp` and read your recipes
-  with `list_recipes`, `get_recipe`, `get_vibes`, and `search`. The `vibe_check` tool guides an
-  assistant through drafting your vibes for approval. They save what you tell them with
-  `create_recipe`, `update_recipe`, and `archive_recipe`.
-- **Every version is kept.** Each write is a new version that records which assistant made it. The
-  web page at `https://app.meetmilton.com` shows the history with diffs, and one tap reverts.
-  Assistants cannot delete or revert; only you can.
+- **TPS Report and memos.** TPS Report holds your general working preferences. Ordinary
+  memos hold instructions for particular tasks, in the portable Agent Skills format.
+  A new account starts with empty TPS; existing content stays intact.
+- **One MCP server.** Assistants connect to `https://mcp.meetmilton.com/mcp`. They read
+  `get_tps_report`, `list_memos`, `get_memo`, and `search`; `tps_check` guides a complete
+  draft for your approval. They author content with `update_tps_report`, `create_memo`,
+  and `update_memo`. `archive_memo` stops serving an ordinary memo to assistants.
+- **Every version is kept.** The read-only app at `https://app.meetmilton.com` shows
+  content, history, and diffs. You can archive or restore ordinary memos and restore a
+  stored version of any memo, including TPS, as a new version. TPS stays active.
+  Download all exports one root `TPS.md` and active ordinary `<name>/SKILL.md` folders.
 
 The hosted service is at [meetmilton.com](https://meetmilton.com), in early access.
 
 ## What is here
 
 - [`server/`](server/): the MCP server and web app, a Vercel Function on Node 24. Sign-in is Neon
-  Auth (Google and GitHub); recipes live in Neon Postgres. See its README to run your own.
+  Auth (Google and GitHub); memos live in Neon Postgres. See its README to run your own.
 - [`apps/site`](apps/site/): the Astro page behind `meetmilton.com`.
 - [`packages/theme`](packages/theme/): Milton's design tokens, stylesheets, and contrast check.
-- [`templates/`](templates/): the starter recipes every new account gets.
+- [`templates/`](templates/): the empty TPS template for new accounts.
 - [`design/`](design/): Milton's portrait and icons.
 - [`SPEC.md`](SPEC.md): the design notes and decisions, in the order they were made.
 

@@ -36,6 +36,13 @@
       "when": 1793398182072,
       "tag": "0004_permanent_vibes",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793401619788,
+      "tag": "0005_memos_rename",
+      "breakpoints": true
     }
   ]
 }

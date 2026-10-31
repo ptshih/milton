@@ -19,47 +19,47 @@ export interface StoreDatabase extends StoreSession {
 
 const triggerRefusals = new Map<string, { message: string; status: number }>([
   [
-    "recipe_recovery_invalid",
+    "memo_recovery_invalid",
     { message: "Recovery must copy an eligible stored version.", status: 422 },
   ],
   [
-    "recipe_version_conflict",
+    "memo_version_conflict",
     {
-      message: "The recipe version conflicts with the current recipe.",
+      message: "The memo version conflicts with the current memo.",
       status: 409,
     },
   ],
   [
-    "recipe_version_is_immutable",
-    { message: "Recipe versions cannot be changed.", status: 409 },
+    "memo_version_is_immutable",
+    { message: "Memo versions cannot be changed.", status: 409 },
   ],
   [
-    "recipe_metadata_is_immutable",
-    { message: "Recipe metadata cannot be changed.", status: 409 },
+    "memo_metadata_is_immutable",
+    { message: "Memo metadata cannot be changed.", status: 409 },
   ],
   [
-    "recipe_history_limit",
-    { message: "The recipe history limit has been reached.", status: 422 },
+    "memo_history_limit",
+    { message: "The memo history limit has been reached.", status: 422 },
   ],
   [
-    "recipe_body_limit",
-    { message: "The recipe body exceeds its size limit.", status: 422 },
+    "memo_body_limit",
+    { message: "The memo body exceeds its size limit.", status: 422 },
   ],
   [
-    "recipe_description_limit",
-    { message: "The recipe description exceeds its size limit.", status: 422 },
+    "memo_description_limit",
+    { message: "The memo description exceeds its size limit.", status: 422 },
   ],
   [
-    "recipe_reason_limit",
-    { message: "The recipe reason exceeds its size limit.", status: 422 },
+    "memo_reason_limit",
+    { message: "The memo reason exceeds its size limit.", status: 422 },
   ],
   [
-    "recipe_name_limit",
-    { message: "The recipe name exceeds its size limit.", status: 422 },
+    "memo_name_limit",
+    { message: "The memo name exceeds its size limit.", status: 422 },
   ],
   [
-    "recipe_count_limit",
-    { message: "The recipe count limit has been reached.", status: 422 },
+    "memo_count_limit",
+    { message: "The memo count limit has been reached.", status: 422 },
   ],
   [
     "account_unavailable",
@@ -103,7 +103,7 @@ export function databaseFailure(error: unknown): StoreError {
   }
   return new StoreError(
     "store_unavailable",
-    "The recipe store is unavailable. Try again.",
+    "The memo store is unavailable. Try again.",
   );
 }
 
