@@ -53,7 +53,7 @@ connected assistant read and write; nothing here blocks the cutover.
       Milton-side judge on the page (model cost, abuse limits) is deliberately later. Ships after
       the write tools.
 
-- [ ] #6 (site, low) **Give Milton a Hawaiian shirt on Fridays.** Peter’s idea, 2026-10-30:
-      the Milton logo/icon wears a Hawaiian shirt every Friday, as an Office Space nod.
-      Before implementation, choose which time zone defines Friday and how the shirt reads
-      at small icon sizes. The ordinary mark returns on other days.
+- [ ] #6 (site, low, founder) **Give Milton a Hawaiian shirt on Fridays.** Deferred 2026-10-30:
+      Peter rejected the shirt beside the folder and wants to revisit the idea later.
+      Keep the ordinary folder. If resumed, Friday follows each visitor's local time zone;
+      choose new artwork and check its readability at navigation-icon size first.
