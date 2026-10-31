@@ -1,6 +1,10 @@
 # Self-hosting Milton
 
-Milton keeps your instructions as memos that connected AI assistants can read and update. This directory contains the MCP server and the browser app, served by one Vercel Function on Node 24. Neon Postgres stores memos and their version history, and Neon Auth handles sign-in and assistant authorization. The browser app displays TPS and memos, offers ordinary Archive/Restore and stored-version recovery, and downloads current content.
+Milton maintains internal memos containing working instructions. Connected assistants
+submit changes through `save_memo` and read the compiled TPS Report through
+`get_tps_report`. This directory contains the MCP server and current-report web app,
+served by one Vercel Function on Node 24. Neon Postgres stores memos, internal memo
+history, current TPS and request receipts; Neon Auth handles sign-in and authorization.
 
 ## Prerequisites
 
@@ -42,6 +46,25 @@ Set these in the Vercel project's environment settings before deploying. Keep cr
 | `DATABASE_URL`            | The TLS connection string for the `milton` database. Use the owner connection for migrations and imports.                                         |
 | `MEMOS_SOURCE`            | Optional memo-source selector. Leaving it unset uses the tenant database store; bundled memo serving is unavailable.                              |
 
+Saving also needs all four compiler settings. With none set, TPS reads work and
+saves return `compiler_unavailable`; there is no model fallback.
+
+| Name                              | Meaning                                                                       |
+| --------------------------------- | ----------------------------------------------------------------------------- |
+| `MILTON_GEMINI_API_KEY`           | Server-only Google Cloud API key for the selected project.                    |
+| `MILTON_GEMINI_PROJECT_ID`        | Project authorized to use Gemini 3.8 Flash on the US endpoint.                |
+| `MILTON_MODEL_ACCOUNT_BUDGET_USD` | Positive per-account daily model budget in dollars, up to six decimal places. |
+| `MILTON_MODEL_GLOBAL_BUDGET_USD`  | Positive whole-installation daily model budget in dollars.                    |
+
+The compiler reserves $0.0297 per claimed request against both budgets using
+conservative pre-credit token prices. Reservations remain consumed for the UTC day
+on failures or unknown usage; they are not an invoice. Choose budgets deliberately.
+Keys and raw model responses are never logged. Current limits are 8,000 input-token
+allowance (enforced conservatively by request bytes plus framing), 2,000 output
+and thinking tokens, and one call with no automatic retry. Oversized complete
+inputs or incomplete output are refused without truncation. Recheck provider
+pricing before changing the model or limits.
+
 Use separate Neon branches and matching environment settings for development and previews. After changing Vercel environment variables, create a new deployment for them to take effect.
 
 ## Install and migrate
@@ -61,49 +84,31 @@ bun run db:migrate
 
 This command explicitly reads `.dev.vars`. It does not use `.env.local` or an inherited `DATABASE_URL`. It checks the database name and owner role, then applies pending migrations and records them in the Drizzle journal. Rerunning it applies only migrations that have not completed. Run one migration process at a time.
 
-The migrations create six application tables: `store_config`, `users`, `identities`, `memos`, `memo_versions`, and `usage_daily`. A fresh installation starts with sign-ups **closed**, with no account-count cap. Running migrations alone does not admit your first user.
+The migrations create eight application tables: `store_config`, `users`,
+`identities`, `memos`, `memo_versions`, `usage_daily`, `tps_reports`, and
+`save_requests`. Fresh installations start with sign-ups closed.
 
-Migration `0005_memos_rename.sql` changes the physical tables to `memos` and `memo_versions`, the foreign-key column to `memo_id`, and the count-limit key to `limits_json.memos`. It also renames constraints, backing indexes, functions and triggers, and updates their bodies. PostgreSQL 18's named NOT NULL constraints are included when present. It preserves IDs, slugs, versions, timestamps, stored text and attribution, retained bytes, usage, and all cap values. Existing content and historical actor IDs are never rewritten. Historical migrations and snapshots remain unchanged.
+Migration `0006_compiled_memos.sql` adds current TPS and durable save receipts.
+It preserves existing memos and their version history, including content formerly
+stored under the legacy `vibes` name. That content participates as an internal
+memo when a new save compiles the account. Nonempty accounts with no valid compiled
+TPS return `tps_report_unavailable` and the current fencing version; reads do not
+invent an empty report or invoke a model. Submit a user-directed save to compile
+existing sources together. Empty accounts read an empty initial report.
 
-The application keeps the historical internal core key `vibes`, including in unchanged SQL guards and opaque tags. The public name is TPS Report; no 0006 is needed.
+There are no old tool aliases, compatibility mode or rollout flags. Apply the
+migration before running this server, and refresh client tool discovery. The
+migration runner and the disposable rehearsal test verify atomic DDL. For an
+uncertain command outcome, inspect the actual schema and migration journal before
+retrying; an interrupted connection does not prove rollback.
 
-**Upgrades require coordinated maintenance.** Old Functions cannot use the renamed schema. Follow the cutover below; do not run this migration during an ordinary rolling deployment. New installations can apply all migrations before their first deployment.
-
-Migration `0004_permanent_vibes.sql` exempts the stable internal TPS key `vibes` from the memo count and keeps legacy recovery active. Its historical rollback only applies to a pre-0005 schema; it is not the rollback for this release. Migration 0002 strengthens recovery guards without changing stored snapshots or retained-byte accounting.
-
-Migration 0003 removes the sign-up cap column and its constraint for both hosted and self-hosted installations. It preserves the admission mode and allow-list.
-
-### Memo rename cutover and recovery
-
-1. Rehearse forward, rollback, and re-forward on a disposable database. Build and verify the new server there; retain the previous server artifact for rollback. The local PGlite tests are not proof of hosted connection contention or deployment gating.
-2. Block application and MCP traffic before invoking either version against a changing schema. Cover both custom domains and all old deployment URLs that could reach the database, and stop administrative imports. Drain in-flight requests and transactions. The Function's 60-second limit alone is not drain evidence. Reads such as old `get_vibes`, new `get_tps_report`, the home page, and downloads can repair stored TPS, so a write-only gate is insufficient. The deployment owner must prove this gate; the repository does not configure one.
-3. Record the schema/journal state and privately compare data before and after migration. Use the intended worktree's `server/.dev.vars` with the existing migration runner; never borrow another worktree's credentials. Run one migration process. The application DDL and its journal entry commit together; lock acquisition times out after ten seconds.
-4. Keep traffic blocked while applying 0005 and promoting the new server. Remove the old optional `RECIPES_SOURCE` setting and use `MEMOS_SOURCE=store` if setting it explicitly. Verify new tool discovery, TPS/memo read-only routes, agent authoring, history/recovery, and downloads with an explicit test account. `/health` does not test the schema. Publish the matching site wording, then reopen only the new server. Old deployment URLs must remain unable to reach production.
-5. Refresh MCP tool discovery and browser pages. The renamed tools, list-result key `memos`, `memo_*` error codes, `/memos/...` routes, and `memo_id` form field have no old aliases. Old page URLs return 404 and stale form POSTs are rejected, never replayed. Copy unsaved old-form text before refreshing. TPS uses dedicated tools and `/tps-report`; old core paths and browser create/save/delete forms return 404 without writing. Tokens, sessions, slugs, and complete version tags remain valid.
-
-**A failed command does not prove rollback.** A database connection can fail during cleanup after a successful commit. For any uncertain connection or command outcome, keep traffic blocked and inspect **both the physical schema and the migration journal** through a fresh connection before retrying, rolling back, or reopening traffic. Check the actual table/column names, quota keys, trigger functions, and the 0005 journal timestamp from `drizzle/meta/_journal.json`, not only a success message or process exit code. These read-only queries expose no stored memo content:
-
-```sql
-SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY created_at;
-SELECT table_name, column_name FROM information_schema.columns
-WHERE table_schema='public'
-  AND table_name IN ('recipes','recipe_versions','memos','memo_versions')
-ORDER BY table_name, ordinal_position;
-SELECT limits_json ? 'recipes' AS old_count_key,
-       limits_json ? 'memos' AS new_count_key
-FROM store_config WHERE singleton=1;
-SELECT proname FROM pg_proc
-WHERE pronamespace='public'::regnamespace AND proname LIKE 'milton_%'
-ORDER BY proname;
-```
-
-- Old schema with the journal still at 0004: a failed transaction left the old state. Verify it before retrying or reopening the old server.
-- New schema with 0005 recorded: the forward transaction committed, even if the command reported failure. Continue new-server validation or perform the explicit inverse rollback under maintenance.
-- Any other combination: keep traffic blocked and investigate. Old schema with 0005 recorded is only expected after a known, verified inverse rollback; never infer that an uncertain forward command performed one.
-
-To roll back, block and drain new callers, execute `drizzle/rollback/0005_memos_rename.sql`, inspect schema and journal, then promote and verify the old server before reopening. This inverse transaction retains every committed version, including new writes made after forward. It restores the guards effective after 0004, not the older guards in the 0004 rollback. The old UI may show the generic imported/system label for a new `memo-import` actor; stored attribution is intact. Clients must refresh tool discovery again.
-
-The inverse deliberately retains the 0005 journal row. Consequently, `db:migrate` alone cannot re-forward after rollback. Reapply the reviewed `0005_memos_rename.sql` explicitly inside one transaction under the same maintenance gate, with schema-state verification before and after, without inserting a duplicate journal row. Do not resume normal migration/deployment commands while schema and journal intentionally differ. Handle uncertain rollback or re-forward outcomes with the same fresh-connection inspection.
+The offline rollback script `drizzle/rollback/0006_compiled_memos.sql` parks the two
+new tables and receipt guard in `milton_rollback`, retaining their rows and all memo
+history. The journal is retained. Re-forward with
+`drizzle/rollback/0006_compiled_memos_reforward.sql`, not by deleting the journal
+entry or rerunning the forward CREATE statements. Stop the application while
+using these scripts. Historical migrations 0000–0005 and their inverses remain
+unchanged; their legacy naming and recovery rules are not the current public API.
 
 ## Deploy
 
@@ -151,25 +156,38 @@ WHERE singleton = 1;
 
 You can apply this before anyone signs in. There is no account-count cap. Setting `signup_mode` back to `closed` stops new admissions without locking out existing users.
 
-The first admitted sign-in creates a Milton user with only empty, permanent TPS Report. Unfinished revision-0 accounts initialize the missing core and complete revision 2 in one tenant-locked transaction. Existing bodies, ordinary memos, descriptions, versions and attribution are preserved; completed accounts are never reseeded. Agents author content; the browser displays it and offers stored recovery.
+The first admitted sign-in starts with empty TPS and no active instructions. Existing memo bodies and history are preserved. The browser views the current report; connected assistants submit user-directed changes.
 
 ## Connect an assistant
 
-Add your configured `MCP_RESOURCE` URL as a remote HTTP MCP server in the assistant's settings. Complete browser sign-in and consent, then try `get_tps_report` or `list_memos`.
+Add your configured `MCP_RESOURCE` URL as a remote HTTP MCP server. Complete
+browser sign-in and consent, then call `get_tps_report`.
 
-The server exposes ten tools: `get_tps_report`, `update_tps_report`, `tps_check`, `check_draft`, `list_memos`, `get_memo`, `search`, `create_memo`, `update_memo`, and `archive_memo`. There are no aliases for `get_vibes`, `vibe_check`, or recipe tools. Every connected assistant can author TPS and ordinary memos; only ordinary memos can be archived. TPS does not count toward the memo limit. The signed-in browser can Archive/Restore ordinary memos and restore a stored version of either kind. It has no content editor, New memo, Clear TPS or permanent-delete control. No custom read/write OAuth scopes are required.
+Exactly two tools are exposed:
 
-`get_tps_report` returns `{title:"TPS Report",description,text,version,archived:false,is_template}`. `update_tps_report` takes `{text,reason,expected_version,description?}` with no name; empty text is valid. The stable internal key remains `vibes` to preserve IDs and opaque version tags. Generic memo tools refuse that key. Ordinary `tps` and `tps-report` slugs coexist independently, including `/memos/tps-report` beside `/tps-report`.
+| Tool                                              | Contract                                                                                                        |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `get_tps_report()`                                | Returns `{text, version, is_empty}`. No model call or content write.                                            |
+| `save_memo({text, request_id, expected_version})` | Natural-language instructions, correction or removal; UUID for the logical request and version from the report. |
 
-`list_memos` lists active ordinary memos only. `search` includes active TPS with `kind:"tps_report"` and a public title, and ordinary hits with `kind:"memo"` and a name. It searches TPS's public title, description and body, never its hidden key. Archived ordinary content is excluded from all assistant reads and error responses. Direct reads return `not_found`; duplicate create, update and repeated archive return `memo_archived` with only name/version/archive metadata. Archive success returns only `{name,version,archived:true}`. The owner retains archived content/history access in the app.
+`save_memo` returns `saved`, `unchanged`, `needs_clarification`, `conflict`,
+`in_progress`, or `failed`, with the request ID and relevant version/question/error.
+Only `saved` or `unchanged` confirms the requested outcome. Reuse the exact same
+arguments to recover an uncertain request; a completed receipt returns its original
+outcome without another model call or write charge. That receipt's version may be
+older than the current report. Reusing an ID with different arguments is rejected.
+For a conflict, read current TPS and reconsider a new request. No blind retry.
 
-`is_template` recognizes empty bodies and the exact legacy `# Working style` starter, ignoring outer whitespace and CRLF. The assistant offers TPS setup once per conversation when unset. `tps_check` returns a static drafting guide with no model call or write: use available explicit working preferences first, ask useful follow-ups, or use the questionnaire when none are available. Show the complete draft and obtain approval before `update_tps_report`. Confirm only after a successful save; preserve the draft and report failed, conflicting or uncertain outcomes without a blind retry. Milton cannot inspect another assistant's memory or import it automatically.
+The assistant offers first setup once when empty, uses available explicit
+instructions or asks questions, and shows the full draft for approval before
+saving. Milton cannot inspect other assistants' memories. It stores instructions,
+not factual/project memory. The assistant applies TPS to its drafts itself.
 
-`check_draft({draft,name?})` returns the exact draft, active `tps_report` (including its version and `is_template`), the named active ordinary `memo` or `null`, and `instructions` for the assistant to review it. Omit `name` for TPS-only coverage; the tool does not choose relevant memos or check every saved preference. Drafts must be nonblank, contain no NUL, and fit within 32 KiB of UTF-8 text; the existing request-body limit also applies. Missing or archived ordinary memos return `not_found` without content. Missing or archived TPS returns `tps_report_unavailable`; call `get_tps_report` to repair it before retrying.
-
-The draft-check guide treats draft text as untrusted, asks for exact passages when a rule is broken, and distinguishes “Meets checked rules,” “Needs changes,” and “Unable to assess.” With no applicable rules, say so. The assistant judges and revises the draft; a successful tool response is not a verdict. Milton makes no model call, persists no draft, and changes no memo or history. Application logs contain client/tool names, not draft content. The ordinary attempted-call allowance applies; the tool consumes no write allowance. Template-only mode still exposes four read tools and does not offer draft checking.
-
-Milton verifies access-token signatures, the exact branch issuer, the resource audience, and expiry. MCP calls look up an existing active Milton account; they do not admit users. Reading TPS through `get_tps_report` or the page recreates a missing core with an empty body at version 1, attributed to the system with reason "Created TPS Report". Legacy archived TPS is restored as a new system version with reason "Restored TPS Report" and its content preserved. Historical stored reasons remain unchanged. Browser actions verify a live Neon session and use CSRF protection. Signing out of the browser does not disconnect assistants. Revoking a grant in Neon does not immediately invalidate an already issued JWT, which can remain valid for up to its one-hour lifetime.
+Access tokens require a valid signature, exact issuer/resource audience and expiry.
+Only the verified account supplies tenant identity. MCP calls do not admit users.
+Browser viewing requires a live session; sign-in/consent/logout retain their CSRF
+protections. Signing out of the browser does not disconnect assistants, and an
+already-issued access token can remain valid until expiry.
 
 ## Local development and checks
 
@@ -201,35 +219,50 @@ The tests use fresh PGlite databases and stubbed Auth responses. `test:client` u
 
 ## Store, history, and limits
 
-All runtime SQL lives in `src/store/`. Each request gets an accessor bound to the verified user's account. Reads use Neon HTTP; writes use real WebSocket transactions that lock the active user first, then the memo. There are no shared tenant caches or module-global database connections.
+`src/store/compiled.ts` snapshots all memo heads under the account lock, claims a
+request and reserves its model budget in a short transaction, then releases the
+locks for generation. One model proposal supplies the complete active memo set and
+TPS. Publication rechecks the account, request deadline, source fingerprint and
+report version; memo versions, current TPS, receipt and single write charge commit
+together. Stale or invalid proposals cannot partially publish.
 
-Each successful write appends one immutable snapshot with its author, time, and reason. Reads return a tag containing the memo's immutable ID and integer version. Update and archive require that exact tag as `expected_version`. A stale tag, including one from a deleted and recreated ordinary memo, returns a conflict with the current active snapshot and tag. Read the current memo before retrying a conflict or an uncertain write outcome.
+Internal `memo_versions` are append-only. `tps_reports` holds one replaceable
+snapshot per account, with a monotonic revision and source fingerprint. There is
+no TPS content history. Receipts keep input hashes and bounded outcomes, not raw
+submitted text or copies of TPS. Their maximum 2-KiB result space plus metadata is
+reserved against retained-history capacity when claimed, so terminal failures fit.
+Completed receipts are immutable. A crashed request can expire; the same ID never
+runs the model again. Daily model budgets serialize their short reservation step
+using the existing config row, not a separate queue or service.
 
-Revert appends a copy of the selected stored version, including archive state for ordinary memos; TPS stays active. Restore copies the current archived head and changes only its archive flag. Recovery must copy an eligible stored snapshot; an arbitrary new body cannot claim the recovery exemption. Restoration appends a new version and keeps every intervening version. Browser recovery accepts only CSRF, immutable ID, expected tag and, for earlier-version recovery, the stored source version; no authored content fields. Failed recovery shows a read-only current view after a successful reread. An unavailable reread shows no remembered content or action fences. A stale write is never retried automatically.
+The model receives current active memos, never archived versions or a prior TPS.
+Existing content under the former `vibes` core key is ordinary source for compilation.
+The compiler chooses memo grouping; the database validates identity, complete
+publication and size limits. These structural checks do not prove semantic fidelity.
 
-Default caps are configurable in `store_config.limits_json`:
+| Limit                                       | Default                                                           |
+| ------------------------------------------- | ----------------------------------------------------------------- |
+| Internal memos, including archived          | 100 (historical `vibes` row retains its existing guard exemption) |
+| Memo/TPS body                               | 32 KiB UTF-8                                                      |
+| Description/reason                          | 500 UTF-8 bytes each                                              |
+| Retained memo versions and bounded receipts | 64 MiB per account                                                |
+| Attempted MCP calls                         | 1,000 per account per UTC day                                     |
+| Successful logical saves                    | 200 per account per UTC day                                       |
+| Request body                                | 64 KiB before parsing                                             |
 
-| Limit                           | Default                    |
-| ------------------------------- | -------------------------- |
-| Memos, including archived memos | 100                        |
-| Body                            | 32 KiB of UTF-8 text       |
-| Name                            | 64 UTF-8 bytes             |
-| Description and reason          | 500 UTF-8 bytes each       |
-| Retained version payloads       | 64 MiB per user            |
-| MCP tool calls                  | 1,000 per user per UTC day |
-| Ordinary writes                 | 200 per user per UTC day   |
-| Request body                    | 64 KiB before parsing      |
-| List, search, and history pages | At most 50 items           |
+Each successful `save_memo` counts **once**, regardless of internal memo changes.
+No-op, clarification, conflict, failed saves and receipt replays consume no extra
+write allowance. Every attempted MCP call still counts, including retries. Model
+spending is separately bounded, even when a call produces no change. There are no
+public archive/restore exemptions or history controls.
 
-Attempted MCP calls count toward the call cap, including invalid arguments and retries. Only successful ordinary writes consume the write allowance; a refusal rolls back its charge. Revert and restore bypass daily write and retained-history ceilings, while their bytes still count as retained history. Archive remains a normal write and can be refused at either cap; stored-head Restore and earlier-version recovery retain their exemptions. Daily allowances reset at midnight UTC. The browser page has no request counter.
-
-The page shows version history and plain-text diffs, escapes memo text, and serves no browser JavaScript. Assistant authors are stored as issuer and exact client ID. History resolves display names from the signed-in person's grants, with bounded lookups and a client-ID fallback if metadata is unavailable.
-
-Download all reads one consistent snapshot of current unarchived memos and produces one root `TPS.md` containing the exact TPS body and ordinary `<name>/SKILL.md` folders with quoted YAML name and description fields. There is no duplicate core Skill folder or `VIBES.md`. The page repairs a missing or legacy archived core before taking the single export snapshot. Bodies retain their stored bytes. History and attribution are excluded. Downloads above 4,000,000 bytes are refused without truncation.
+The website shows current TPS only, escapes its text and serves no browser
+JavaScript. `/download` returns its exact text as `TPS.md`. Old memo, history and
+mutation routes return 404. Model failure keeps the last coherent report readable.
 
 ## Import existing memos
 
-The importer requires an explicit `--source-dir`. The repository contains the empty TPS `templates/`, not your personal memos. The administrative importer still addresses TPS with the internal `vibes` folder/key; this is a maintenance exception, not an MCP alias. Prepare a directory of `<name>/SKILL.md` folders with valid name and description frontmatter.
+This administrative importer is for offline data work, not the agent interface. It changes canonical sources without compilation; TPS reads then refuse the stale snapshot until a user-directed `save_memo` compiles the new sources. The importer requires an explicit `--source-dir`. The repository contains the empty TPS `templates/`, not your personal memos. The administrative importer still addresses TPS with the internal `vibes` folder/key; this is a maintenance exception, not an MCP alias. Prepare a directory of `<name>/SKILL.md` folders with valid name and description frontmatter.
 
 Find your Milton account ID in the `milton` database:
 

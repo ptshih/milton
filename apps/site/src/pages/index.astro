@@ -61,8 +61,8 @@ import SiteLayout from "../layouts/SiteLayout.astro";
     <p class="eyebrow">// Your way of working</p>
     <h2>From your inbox to your editor.</h2>
     <p class="section-lead">
-      Keep your everyday preferences in TPS Report, your permanent core memo.
-      Add a memo for the things you do a particular way.
+      Tell Milton how you want things done. It organizes your instructions into
+      memos and prepares one TPS Report for your assistants to read.
     </p>
     <div class="use-cases">
       <article class="use-case">
@@ -104,10 +104,10 @@ import SiteLayout from "../layouts/SiteLayout.astro";
         </p>
       </li>
       <li>
-        <h3>Make your preferences clear.</h3>
+        <h3>Put your instructions in writing.</h3>
         <p>
           Your account starts with an empty TPS Report. Ask your connected
-          assistant to help draft it from preferences you share, ask useful
+          assistant to help draft instructions you want to save, ask useful
           follow-ups, and show you the full draft before saving.
         </p>
       </li>
@@ -115,14 +115,14 @@ import SiteLayout from "../layouts/SiteLayout.astro";
         <h3>Keep refining.</h3>
         <p>
           Ask your assistant to read TPS Report before it starts. Tell it what
-          to change or ask it to create a memo for a task. Every saved change
-          keeps a version for you to review.
+          to add, change, or remove. Milton handles the filing and updates your
+          report before confirming a save.
         </p>
       </li>
     </ol>
     <p class="reading-note">
-      Assistants still decide when to read and use your memos. Milton makes the
-      instructions available; it doesn’t make the decisions for them.
+      Assistants still decide when to read and use your TPS Report. Milton makes
+      the instructions available; it doesn’t make the decisions for them.
     </p>
   </section>
   <section class="section control-section">
@@ -136,19 +136,17 @@ import SiteLayout from "../layouts/SiteLayout.astro";
     </div>
     <div class="controls">
       <article>
-        <h3>See what changed.</h3>
+        <h3>See what’s on file.</h3>
         <p>
-          Every saved change keeps a version and records who made it. Compare
-          versions and restore an earlier one as a new version. The history
-          stays.
+          Read your current TPS Report on the website. To change an instruction,
+          tell your connected assistant what Milton should save.
         </p>
       </article>
       <article>
-        <h3>Take your memos with you.</h3>
+        <h3>Take your instructions with you.</h3>
         <p>
-          Download your current active memos as Markdown, including TPS.md.
-          Milton’s code is open source under MIT, with instructions for running
-          your own server.{" "}
+          Download your current report as TPS.md. Milton’s code is open source
+          under MIT, with instructions for running your own server.{" "}
           <a href="https://github.com/zoneofdanger/milton">Read the source ↗</a>
         </p>
       </article>
@@ -160,9 +158,10 @@ import SiteLayout from "../layouts/SiteLayout.astro";
     <details>
       <summary>What is a memo?</summary>
       <p>
-        A short set of written instructions for an assistant. TPS Report
-        describes how you like to work in general. Other memos cover a task,
-        such as your email style. TPS Report is permanent and can stay empty.
+        Written instructions that Milton files for you. Milton chooses how to
+        group and maintain the internal memos. TPS Report brings all their
+        active instructions together, including rules for particular tasks. It
+        can stay empty.
       </p>
     </details>
     <details>
@@ -174,7 +173,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
       </p>
     </details>
     <details>
-      <summary>Will an assistant always follow my memos?</summary>
+      <summary>Will an assistant always follow my instructions?</summary>
       <p>
         No. They’re assistants, not employees. Milton makes your saved
         instructions available to the assistants you connect. The assistant
@@ -183,13 +182,12 @@ import SiteLayout from "../layouts/SiteLayout.astro";
       </p>
     </details>
     <details>
-      <summary>Who can read or change my memos?</summary>
+      <summary>Who can read or change my instructions?</summary>
       <p>
-        You and the assistants you connect can read them. Assistants create and
-        update content when you ask. On the website, you can archive or restore
-        ordinary memos and restore earlier versions of any memo, including TPS
-        Report. Archived memos are not served to assistants.{" "}
-        <a href="/privacy">Read the privacy policy.</a>
+        You and your connected assistants can read TPS Report. Assistants submit
+        changes when you ask; Milton uses a model to organize the internal memos
+        and prepare the updated report. The website shows what’s currently on
+        file. <a href="/privacy">Read the privacy policy.</a>
       </p>
     </details>
     <details>

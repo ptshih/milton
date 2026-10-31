@@ -16,24 +16,32 @@ import SiteLayout from "../layouts/SiteLayout.astro";
   <h2>What Milton stores</h2>
   <p>
     Your name and email address from Google or GitHub when you sign in; the
-    memos you and your assistants write, every version of each, who wrote it and
-    when; which assistants you have connected; and a daily count of tool calls.
+    instructions you ask your assistants to save; the internal memos Milton
+    organizes, their versions and authorship; your current compiled TPS Report;
+    request receipts used to prevent duplicate saves; connected assistants; and
+    counts of tool calls, saves and reserved model spending.
   </p>
 
   <h2>How we use it</h2>
   <p>
-    Only to run Milton — to sign you in, keep your memos and their history, and
-    serve them to the assistants you connect. We do not sell your data, show
-    ads, or use your memos to train AI models.
+    Only to run Milton — to sign you in, organize your memos, retain their
+    internal history, and prepare TPS Report for the assistants you connect. We
+    do not sell your data, show ads, or use your memos to train AI models.
   </p>
 
   <h2>Who can see your memos</h2>
-  <p>You, and the assistants you connect.</p>
+  <p>
+    You and the assistants you connect receive your current TPS Report. When you
+    submit a save, Milton sends the submitted instructions and current active
+    memos to Google Cloud’s Gemini model to organize the memos and compile the
+    report. The service providers below process data to operate Milton.
+  </p>
 
   <h2>Where it is kept</h2>
   <p>
     The database and sign-in run on Neon (United States); the website and server
-    run on Vercel; DNS is on Cloudflare. Google and GitHub handle your sign-in
+    run on Vercel; DNS is on Cloudflare. Google Cloud processes memo saves
+    through its US model endpoint. Google and GitHub also handle your sign-in
     with them.
   </p>
 

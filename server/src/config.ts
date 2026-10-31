@@ -1,5 +1,6 @@
 import type { StoreBindings } from "./store";
 import { StoreError } from "./store/errors";
+import { geminiCompiler } from "./compiler";
 
 export interface RuntimeConfig extends StoreBindings {
   issuer: string;
@@ -45,6 +46,7 @@ export function runtimeConfig(
       cookieSecret: env.NEON_AUTH_COOKIE_SECRET,
       DATABASE_URL: env.DATABASE_URL,
       MEMOS_SOURCE: "store",
+      memoCompiler: geminiCompiler(env),
     };
   } catch {
     throw new StoreError(

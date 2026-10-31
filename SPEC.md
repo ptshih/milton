@@ -1,5 +1,26 @@
 # Milton: spec
 
+## Current build: Milton-managed memos and compiled TPS
+
+This section supersedes older tool, history-screen, authored-TPS and recovery
+choices below. Agents use only `get_tps_report` and `save_memo`; Milton's LLM owns
+internal memo organization. Instructions are the contents; the internal objects
+are memos. TPS compiles all active memos and is read without model generation.
+
+One save proposes all source changes and TPS together, then commits them with a
+receipt only if the source is still current. Count one successful logical save
+against the existing 200/day allowance; no-ops, failures and replays do not add a
+write. Keep the separate 1,000 attempted-call and retained-history limits.
+
+History belongs to internal memos. TPS stores only its current snapshot and a
+revision token. The website shows current TPS and downloads TPS.md; it exposes no
+memo-management or history/recovery UI. There are no legacy tool aliases or
+compatibility rollout paths. See server/README.md for the current contracts,
+compiler configuration, migration and local verification instructions.
+
+The rest of this document preserves earlier design history; it does not authorize
+production actions or override the current contract above.
+
 _Design notes, kept in the order decisions were made. The sections up to "Version 2: Milton for anyone" describe the first, read-only plan and are history; what runs today is version 2 (README.md says what is built). Explanatory terminology uses the current name, memos; literal old tool and path names in historical sections are retained._
 
 ## What it is
@@ -186,17 +207,17 @@ preserved; TPS recovery stays active, including from legacy archived sources.
 
 ### Tools
 
-| Tool                                                              | What it does                                                                                       |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `get_tps_report()`                                                | Read/repair TPS; public title, description, body, opaque version, active flag and template status. |
-| `update_tps_report(text, reason, expected_version, description?)` | Append a fenced TPS version; empty text allowed, no name parameter.                                |
-| `tps_check()`                                                     | Static preference-drafting guide; no model call or write.                                          |
+| Tool                                                              | What it does                                                                                                     |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `get_tps_report()`                                                | Read/repair TPS; public title, description, body, opaque version, active flag and template status.               |
+| `update_tps_report(text, reason, expected_version, description?)` | Append a fenced TPS version; empty text allowed, no name parameter.                                              |
+| `tps_check()`                                                     | Static preference-drafting guide; no model call or write.                                                        |
 | `check_draft(draft, name?)`                                       | Exact draft, active TPS and optional named memo, plus an assistant review guide; no model call or content write. |
-| `list_memos(cursor?)`, `get_memo(name)`                           | Active ordinary memos, versioned and paginated.                                                    |
-| `search(words, cursor?)`                                          | Literal case-insensitive search; distinguish TPS title hits from ordinary name hits with kind.     |
-| `create_memo(name, description, text)`                            | New ordinary version 1; existing names are never overwritten.                                      |
-| `update_memo(name, text, reason, expected_version, description?)` | Append an active ordinary version with full immutable-ID/version fencing.                          |
-| `archive_memo(name, reason, expected_version)`                    | Append an archive version; return only name/version/archive metadata.                              |
+| `list_memos(cursor?)`, `get_memo(name)`                           | Active ordinary memos, versioned and paginated.                                                                  |
+| `search(words, cursor?)`                                          | Literal case-insensitive search; distinguish TPS title hits from ordinary name hits with kind.                   |
+| `create_memo(name, description, text)`                            | New ordinary version 1; existing names are never overwritten.                                                    |
+| `update_memo(name, text, reason, expected_version, description?)` | Append an active ordinary version with full immutable-ID/version fencing.                                        |
+| `archive_memo(name, reason, expected_version)`                    | Append an archive version; return only name/version/archive metadata.                                            |
 
 Old core and recipe tool names have no aliases. Attempted calls still count.
 The stable internal core key is refused by generic memo tools. A stale TPS conflict

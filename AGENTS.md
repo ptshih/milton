@@ -1,7 +1,7 @@
 # Milton: instructions for agents
 
-Milton holds Peter's memos (how he wants things done) and will serve them to every assistant he
-uses through a private MCP server. [SPEC.md](SPEC.md) is the plan and the order of work; the
+Milton maintains internal memos containing working instructions and serves their compiled
+TPS Report to connected assistants through its MCP server. [SPEC.md](SPEC.md) is the plan and the order of work; the
 [README](README.md) says what is here.
 
 ## Stop first
@@ -9,9 +9,9 @@ uses through a private MCP server. [SPEC.md](SPEC.md) is the plan and the order 
 - **Memos are served to outside assistants.** Every memo is served to claude.ai,
   ChatGPT, Muse and others. Never put anything about employers, investors, customers, secrets or other people's private details in a memo, a fixture, a commit message or a
   log.
-- **Memos change only through Peter.** Assistants save what he tells them through Milton's write
-  tools; every write is a kept version he can revert on the page. Never edit his memos on your own
-  initiative.
+- **Memos change only through Peter.** Assistants submit user-directed instructions through `save_memo`; Milton organizes
+  internal memos and compiles TPS in one atomic save. Memo history stays internal;
+  TPS has only a current snapshot and revision token. Never edit live memos on your own initiative.
 - **Peter's memos live on the server.** Claude Code, Codex and Pi read them from the Milton MCP
   server (`https://mcp.meetmilton.com/mcp`). Change memos through Milton, not by editing files;
   the repository holds only the starter templates.

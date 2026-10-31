@@ -132,7 +132,7 @@ try {
       }),
     );
   }
-  console.log(await checkMcp(client, true));
+  console.log(await checkMcp(client));
 } catch {
   console.error(
     "The local OAuth client check failed. Restart the connection and check server configuration.",

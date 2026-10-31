@@ -11,20 +11,17 @@ hands over the right one.
 
 ## How it works
 
-- **TPS Report and memos.** TPS Report holds your general working preferences. Ordinary
-  memos hold instructions for particular tasks, in the portable Agent Skills format.
-  A new account starts with empty TPS; existing content stays intact.
-- **One MCP server.** Assistants connect to `https://mcp.meetmilton.com/mcp`. They read
-  `get_tps_report`, `list_memos`, `get_memo`, and `search`; `tps_check` guides a complete
-  draft for your approval. They author content with `update_tps_report`, `create_memo`,
-  and `update_memo`. `archive_memo` stops serving an ordinary memo to assistants.
-- **Draft checks.** `check_draft` supplies TPS Report, an optional named memo, and a
-  review guide. Your assistant judges the draft against those rules; Milton makes
-  no model call and does not save the draft.
-- **Every version is kept.** The read-only app at `https://app.meetmilton.com` shows
-  content, history, and diffs. You can archive or restore ordinary memos and restore a
-  stored version of any memo, including TPS, as a new version. TPS stays active.
-  Download all exports one root `TPS.md` and active ordinary `<name>/SKILL.md` folders.
+- **Tell Milton how to work.** Your connected assistant submits instructions,
+  corrections or removal requests with `save_memo`. Milton's LLM organizes the
+  internal memos and compiles all active instructions into TPS Report.
+- **Read one report.** `get_tps_report` returns the prepared report without a model
+  call. Assistants apply its instructions and exceptions to their own work.
+- **See what's on file.** The app shows your current TPS Report and downloads it
+  as `TPS.md`. New accounts start empty. For first setup, review and approve the
+  complete draft before your assistant saves it.
+- **Keep the filing internal.** Memos retain their version history internally.
+  TPS is a current compiled snapshot with a revision token, not a second history
+  or restore interface. A save publishes memo changes and TPS together.
 
 The hosted service is at [meetmilton.com](https://meetmilton.com), in early access.
 

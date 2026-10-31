@@ -1,9 +1,79 @@
 import { expect, test, setSystemTime } from "bun:test";
 import { exportJWK, generateKeyPair, SignJWT, type JWTPayload } from "jose";
 import { createAccessTokenVerifier } from "../src/token";
+import { geminiCompiler } from "../src/compiler";
 
 const issuer = "https://auth.example/milton/auth";
 const resource = "https://mcp.example/mcp";
+
+test("memo compiler bounds requests, uses no tools or retries, and rejects incomplete output", async () => {
+  let calls = 0;
+  let finishReason = "STOP";
+  const compiler = geminiCompiler(
+    {
+      // Generated dummy credential; the injected transport makes no network call.
+      MILTON_GEMINI_API_KEY: crypto.randomUUID(),
+      MILTON_GEMINI_PROJECT_ID: "fixture-project",
+      MILTON_MODEL_ACCOUNT_BUDGET_USD: "1",
+      MILTON_MODEL_GLOBAL_BUDGET_USD: "10",
+    },
+    async (url, init) => {
+      calls++;
+      expect(String(url)).toContain("/projects/fixture-project/locations/us/");
+      expect(init?.redirect).toBe("error");
+      const body = JSON.parse(String(init?.body));
+      expect(body.tools).toBeUndefined();
+      expect(body.generationConfig.maxOutputTokens).toBe(2000);
+      return Response.json({
+        modelVersion: "gemini-3.8-flash",
+        candidates: [
+          {
+            finishReason,
+            content: {
+              parts: [
+                {
+                  text: JSON.stringify({
+                    decision: "noop",
+                    memos: [],
+                    tps: "",
+                    message: "Already filed.",
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+        usageMetadata: {
+          promptTokenCount: 100,
+          candidatesTokenCount: 40,
+          thoughtsTokenCount: 0,
+        },
+      });
+    },
+  )!;
+  expect(
+    await compiler.compile(
+      { memos: [], text: "A fictional instruction." },
+      new AbortController().signal,
+    ),
+  ).toMatchObject({ decision: "noop" });
+  finishReason = "MAX_TOKENS";
+  await expect(
+    compiler.compile(
+      { memos: [], text: "A fictional instruction." },
+      new AbortController().signal,
+    ),
+  ).rejects.toMatchObject({ code: "compiler_output_invalid" });
+  expect(calls).toBe(2);
+  await expect(
+    compiler.compile(
+      { memos: [], text: "x".repeat(8000) },
+      new AbortController().signal,
+    ),
+  ).rejects.toMatchObject({ code: "compiler_input_limit" });
+  expect(calls).toBe(2);
+  expect(geminiCompiler({})).toBeUndefined();
+});
 
 test("resource tokens require an EdDSA signature, exact issuer, audience and access claims", async () => {
   const key = await generateKeyPair("EdDSA");

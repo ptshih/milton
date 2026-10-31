@@ -1,11 +1,12 @@
 import { memoWrites } from "../src/store/writes";
+import { compiledMemos } from "../src/store/compiled";
+import type { CompilerInput, MemoCompiler } from "../src/compiler";
 import { expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { databaseFailure } from "../src/store/database";
 import { StoreError } from "../src/store/errors";
 import { localStore } from "./local-store";
 import templates from "../generated/templates.json";
-import { createStoreMemoTools } from "../src/store/tools";
 import type { MemoSnapshot } from "../src/store";
 import {
   guardStoreRequest,
@@ -20,6 +21,424 @@ import {
   verifyImportedSource,
   loadImportSources,
 } from "../scripts/import-memos";
+
+test("compiled saves publish memos and TPS together and charge once with durable replay", async () => {
+  const local = await localStore();
+  try {
+    await local.pg.exec(
+      "INSERT INTO users(id) VALUES ('compiled-a'),('compiled-b')",
+    );
+    let calls = 0;
+    const compiler: MemoCompiler = {
+      reserveMicros: 100,
+      accountBudgetMicros: 10000,
+      globalBudgetMicros: 20000,
+      async compile(input) {
+        calls++;
+        if (input.text === "Repeat")
+          return {
+            decision: "noop",
+            memos: [],
+            tps: "",
+            message: "Already on file.",
+          };
+        return {
+          decision: "apply",
+          memos: input.memos.length
+            ? input.memos
+            : [
+                { id: null, description: "Writing", text: "Be concise." },
+                {
+                  id: null,
+                  description: "Actions",
+                  text: "Ask before sending.",
+                },
+              ],
+          tps: "Be concise. Ask before sending.",
+          message: "File instructions.",
+        };
+      },
+    };
+    const store = compiledMemos(local.db, "compiled-a", compiler, {
+      issuer: "fixture",
+      clientId: "assistant",
+    });
+    const empty = await store.getTpsReport();
+    expect(empty.text).toBe("");
+    const input = {
+      text: "Be concise. Ask before sending.",
+      expected_version: empty.version,
+      request_id: crypto.randomUUID(),
+    };
+    const saved = await store.saveMemo(input);
+    expect(saved.status).toBe("saved");
+    const current = await store.getTpsReport();
+    expect(current.text).toBe("Be concise. Ask before sending.");
+    expect(current.version).not.toBe(empty.version);
+    expect(await store.saveMemo(input)).toEqual(saved);
+    expect(calls).toBe(1);
+    expect(
+      (
+        await local.pg.query(
+          "SELECT writes FROM usage_daily WHERE user_id='compiled-a'",
+        )
+      ).rows,
+    ).toEqual([{ writes: 1 }]);
+    const noop = await store.saveMemo({
+      text: "Repeat",
+      expected_version: current.version,
+      request_id: crypto.randomUUID(),
+    });
+    expect(noop.status).toBe("unchanged");
+    expect(await store.getTpsReport()).toEqual(current);
+    expect(
+      (
+        await local.pg.query(
+          "SELECT writes FROM usage_daily WHERE user_id='compiled-a'",
+        )
+      ).rows,
+    ).toEqual([{ writes: 1 }]);
+    await expect(
+      store.saveMemo({ ...input, text: "Changed" }),
+    ).rejects.toMatchObject({ code: "request_id_reused" });
+    expect(
+      (await compiledMemos(local.db, "compiled-b").getTpsReport()).text,
+    ).toBe("");
+    expect(
+      (
+        await local.pg.query(
+          "SELECT count(*)::int AS n FROM memo_versions WHERE user_id='compiled-a'",
+        )
+      ).rows,
+    ).toEqual([{ n: 2 }]);
+    expect(
+      (
+        await local.pg.query(
+          "SELECT count(*)::int AS n FROM tps_reports WHERE user_id='compiled-a'",
+        )
+      ).rows,
+    ).toEqual([{ n: 1 }]);
+  } finally {
+    await local.dispose();
+  }
+});
+
+test("stale and failed compiled saves preserve current memos, receipts and charges", async () => {
+  const local = await localStore();
+  try {
+    await local.pg.exec("INSERT INTO users(id) VALUES ('race'),('foreign')");
+    let release!: () => void, started!: () => void;
+    const begun = new Promise<void>((r) => {
+      started = r;
+    });
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    let calls = 0;
+    const compiler: MemoCompiler = {
+      reserveMicros: 100,
+      accountBudgetMicros: 10000,
+      globalBudgetMicros: 20000,
+      async compile(input) {
+        calls++;
+        if (input.text === "Slow") {
+          started();
+          await held;
+        }
+        return {
+          decision: "apply",
+          memos: [
+            {
+              id: input.memos[0]?.id ?? null,
+              description: "Style",
+              text: input.text,
+            },
+          ],
+          tps: input.text,
+          message: "File instructions.",
+        };
+      },
+    };
+    const actor = { issuer: "fixture", clientId: "fixture" };
+    const store = compiledMemos(local.db, "race", compiler, actor);
+    const initial = await store.getTpsReport();
+    const slow = {
+      text: "Slow",
+      request_id: crypto.randomUUID(),
+      expected_version: initial.version,
+    };
+    const pending = store.saveMemo(slow);
+    await begun;
+    expect((await store.saveMemo(slow)).status).toBe("in_progress");
+    expect((await store.getTpsReport()).text).toBe("");
+    const fast = {
+      text: "Be concise.",
+      request_id: crypto.randomUUID(),
+      expected_version: initial.version,
+    };
+    expect((await store.saveMemo(fast)).status).toBe("saved");
+    release();
+    expect((await pending).status).toBe("conflict");
+    expect(calls).toBe(2);
+    const first = await store.getTpsReport();
+    expect(first.text).toBe("Be concise.");
+    // Throw after actual commit: receipt resolution must report the committed result.
+    let dropped = false;
+    const uncertain = {
+      ...local.db,
+      async transaction<T>(
+        work: Parameters<typeof local.db.transaction<T>>[0],
+      ) {
+        const result = await local.db.transaction(work);
+        if (
+          !dropped &&
+          typeof result === "object" &&
+          result !== null &&
+          "status" in result &&
+          result.status === "saved"
+        ) {
+          dropped = true;
+          throw new Error("lost acknowledgment");
+        }
+        return result;
+      },
+    };
+    const saved = await compiledMemos(
+      uncertain,
+      "race",
+      compiler,
+      actor,
+    ).saveMemo({
+      text: "Lead with the answer.",
+      request_id: crypto.randomUUID(),
+      expected_version: first.version,
+    });
+    expect(saved.status).toBe("saved");
+    if (!saved.version) throw new Error("Saved revision missing");
+    expect((await store.getTpsReport()).text).toBe("Lead with the answer.");
+    expect((await store.saveMemo(fast)).version).toBe(first.version);
+    expect((await store.getTpsReport()).version).toBe(saved.version);
+    const before = await local.pg.query(
+      "SELECT memo_id,version,body FROM memo_versions WHERE user_id='race' ORDER BY memo_id,version",
+    );
+    await local.pg
+      .exec(`CREATE FUNCTION reject_report() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture report failure'; END $$;
+      CREATE TRIGGER reject_report BEFORE UPDATE ON tps_reports FOR EACH ROW EXECUTE FUNCTION reject_report();`);
+    const failed = await store.saveMemo({
+      text: "A changed instruction.",
+      request_id: crypto.randomUUID(),
+      expected_version: String(saved.version),
+    });
+    expect(failed.status).toBe("failed");
+    expect(
+      await local.pg.query(
+        "SELECT memo_id,version,body FROM memo_versions WHERE user_id='race' ORDER BY memo_id,version",
+      ),
+    ).toEqual(before);
+    expect((await store.getTpsReport()).version).toBe(saved.version);
+    expect(
+      (
+        await local.pg.query(
+          "SELECT writes FROM usage_daily WHERE user_id='race'",
+        )
+      ).rows,
+    ).toEqual([{ writes: 2 }]);
+    expect(
+      (
+        await local.pg.query(
+          "SELECT count(*)::int AS n FROM tps_reports WHERE user_id='race'",
+        )
+      ).rows,
+    ).toEqual([{ n: 1 }]);
+    expect(
+      (
+        await local.pg.query(`SELECT id FROM users u WHERE retained_bytes <>
+      (SELECT coalesce(sum(payload_bytes),0) FROM memo_versions WHERE user_id=u.id) +
+      (SELECT coalesce(sum(payload_bytes),0) FROM save_requests WHERE user_id=u.id)`)
+      ).rows,
+    ).toEqual([]);
+  } finally {
+    await local.dispose();
+  }
+});
+
+test("compilation reads all active memos and refuses foreign IDs, caps, and unconfigured spending", async () => {
+  const local = await localStore();
+  try {
+    await local.pg.exec(`INSERT INTO users(id) VALUES ('collection'),('other');
+      INSERT INTO memos(user_id,id,name) SELECT 'collection','m-'||n,'memo-'||n FROM generate_series(1,52) n;
+      INSERT INTO memo_versions(user_id,memo_id,version,description,body,archived,reason,actor_json)
+        SELECT user_id,id,1,'Scoped instruction','Instruction '||id,id='m-52','Fixture','{}' FROM memos;
+      INSERT INTO memos(user_id,id,name) VALUES ('other','foreign-id','other');
+      INSERT INTO memo_versions(user_id,memo_id,version,description,body,reason,actor_json) VALUES ('other','foreign-id',1,'Other','Never exposed','Fixture','{}');
+      UPDATE store_config SET limits_json=limits_json || '{"page_size":1}'::jsonb;`);
+    let calls = 0,
+      mode = "normal";
+    const compiler: MemoCompiler = {
+      reserveMicros: 100,
+      accountBudgetMicros: 10000,
+      globalBudgetMicros: 20000,
+      async compile(input) {
+        calls++;
+        expect(input.memos).toHaveLength(51);
+        expect(input.memos.some((m) => m.id === "m-51")).toBe(true);
+        expect(
+          input.memos.some((m) => m.id === "m-52" || m.id === "foreign-id"),
+        ).toBe(false);
+        if (mode === "foreign")
+          return {
+            decision: "apply",
+            memos: [{ id: "foreign-id", description: "Bad", text: "Bad" }],
+            tps: "Bad",
+            message: "",
+          };
+        if (mode === "noop")
+          return { decision: "noop", memos: [], tps: "", message: "" };
+        return {
+          decision: "apply",
+          memos: input.memos.map((m, i) =>
+            i === 0 && mode === "change"
+              ? { ...m, text: m.text + " changed" }
+              : m,
+          ),
+          tps: input.memos.map((m) => m.text).join("\n"),
+          message: "",
+        };
+      },
+    };
+    const actor = { issuer: "fixture", clientId: "fixture" };
+    const store = compiledMemos(local.db, "collection", compiler, actor);
+    let base = "";
+    await store.getTpsReport().catch((error) => {
+      expect(error.code).toBe("tps_report_unavailable");
+      base = error.details.version;
+    });
+    expect(base).not.toBe("");
+    const send = () =>
+      store.saveMemo({
+        text: "File the existing instructions.",
+        request_id: crypto.randomUUID(),
+        expected_version: base,
+      });
+    expect((await send()).status).toBe("saved");
+    base = (await store.getTpsReport()).version;
+    mode = "foreign";
+    expect((await send()).error).toBe("compiler_output_invalid");
+    expect((await store.getTpsReport()).version).toBe(base);
+    await local.pg.exec(
+      `UPDATE store_config SET limits_json=limits_json || '{"daily_writes":1}'::jsonb`,
+    );
+    mode = "change";
+    expect((await send()).error).toBe("rate_limited");
+    expect((await store.getTpsReport()).version).toBe(base);
+    mode = "noop";
+    expect((await send()).status).toBe("unchanged");
+    expect(
+      (
+        await local.pg.query(
+          "SELECT writes FROM usage_daily WHERE user_id='collection'",
+        )
+      ).rows,
+    ).toEqual([{ writes: 1 }]);
+    const priorCalls = calls;
+    compiler.accountBudgetMicros = 100;
+    await expect(send()).rejects.toMatchObject({
+      code: "model_budget_reached",
+    });
+    expect(calls).toBe(priorCalls);
+    await expect(
+      compiledMemos(local.db, "other", undefined, actor).saveMemo({
+        text: "New instruction.",
+        request_id: crypto.randomUUID(),
+        expected_version: (
+          await compiledMemos(local.db, "other")
+            .getTpsReport()
+            .catch((e) => ({ version: e.details.version }))
+        ).version,
+      }),
+    ).rejects.toMatchObject({ code: "compiler_unavailable" });
+  } finally {
+    await local.dispose();
+  }
+});
+
+test("compiled storage migration preserves populated memos and parks receipts on rollback", async () => {
+  const { PGlite } = await import("@electric-sql/pglite");
+  const pg = new PGlite();
+  try {
+    const journal = (await Bun.file(
+      new URL("../drizzle/meta/_journal.json", import.meta.url),
+    ).json()) as { entries: { idx: number; tag: string }[] };
+    for (const entry of journal.entries.filter((e) => e.idx < 6))
+      await pg.exec(
+        "BEGIN;\n" +
+          (await Bun.file(
+            new URL("../drizzle/" + entry.tag + ".sql", import.meta.url),
+          ).text()) +
+          "\nCOMMIT;",
+      );
+    await pg.exec(`INSERT INTO users(id) VALUES ('upgrade-compiled');
+      INSERT INTO memos(user_id,id,name) VALUES ('upgrade-compiled','existing','example');
+      INSERT INTO memo_versions(user_id,memo_id,version,description,body,reason,actor_json) VALUES ('upgrade-compiled','existing',1,'Working instructions','Be concise. Café.','Initial','{}');`);
+    const before = (await pg.query("SELECT * FROM memo_versions")).rows;
+    const forward = await Bun.file(
+      new URL("../drizzle/0006_compiled_memos.sql", import.meta.url),
+    ).text();
+    await expect(
+      pg.exec("BEGIN;\n" + forward + "\nSELECT 1/0; COMMIT;"),
+    ).rejects.toThrow();
+    await pg.exec("ROLLBACK;");
+    expect(
+      (
+        await pg.query(
+          "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN ('save_requests','tps_reports')",
+        )
+      ).rows,
+    ).toEqual([]);
+    expect((await pg.query("SELECT * FROM memo_versions")).rows).toEqual(
+      before,
+    );
+    await pg.exec("BEGIN;\n" + forward + "\nCOMMIT;");
+    await pg.exec(`INSERT INTO tps_reports(user_id,revision,body,source_hash) VALUES ('upgrade-compiled',1,'Be concise. Café.',repeat('a',64));
+      INSERT INTO save_requests(user_id,request_id,input_hash,source_hash,reserved_micros,deadline,completed,result_json)
+      VALUES ('upgrade-compiled','00000000-0000-4000-8000-000000000001',repeat('b',64),repeat('a',64),100,now(),true,'{"status":"saved"}');`);
+    const receipts = (await pg.query("SELECT * FROM save_requests")).rows;
+    const reports = (await pg.query("SELECT * FROM tps_reports")).rows;
+    const users = (await pg.query("SELECT * FROM users")).rows;
+    await pg.exec(
+      await Bun.file(
+        new URL("../drizzle/rollback/0006_compiled_memos.sql", import.meta.url),
+      ).text(),
+    );
+    expect((await pg.query("SELECT * FROM memo_versions")).rows).toEqual(
+      before,
+    );
+    expect(
+      (await pg.query("SELECT * FROM milton_rollback.save_requests")).rows,
+    ).toEqual(receipts);
+    expect((await pg.query("SELECT * FROM users")).rows).toEqual(users);
+    await pg.exec(
+      await Bun.file(
+        new URL(
+          "../drizzle/rollback/0006_compiled_memos_reforward.sql",
+          import.meta.url,
+        ),
+      ).text(),
+    );
+    expect((await pg.query("SELECT * FROM tps_reports")).rows).toEqual(reports);
+    expect((await pg.query("SELECT * FROM save_requests")).rows).toEqual(
+      receipts,
+    );
+    expect((await pg.query("SELECT * FROM memo_versions")).rows).toEqual(
+      before,
+    );
+    await expect(
+      pg.exec("UPDATE save_requests SET result_json='{}'"),
+    ).rejects.toThrow("save_receipt_is_immutable");
+  } finally {
+    await pg.close();
+  }
+});
 
 test("Postgres migrations are atomic and contain only the six application tables", async () => {
   const { PGlite } = await import("@electric-sql/pglite");
@@ -62,6 +481,7 @@ test("Postgres migrations are atomic and contain only the six application tables
     const journal = JSON.parse(await Bun.file(journalPath).text()) as {
       entries: { idx: number; tag: string }[];
     };
+    journal.entries = journal.entries.filter((entry) => entry.idx <= 5);
     expect(journal.entries.find((entry) => entry.idx === 5)?.tag).toBe(
       "0005_memos_rename",
     );
@@ -973,7 +1393,7 @@ test("import verifies exact bytes, conflicts on retry and permits recreation aft
   }
 }, 30000);
 
-test("get_tps_report preserves snapshots, recognizes unset bodies, and repairs missing vibes", async () => {
+test("legacy internal core snapshots remain readable without exposing old tools", async () => {
   const local = await localStore();
   try {
     const template = templates.find((memo) => memo.name === "vibes");
@@ -988,20 +1408,8 @@ test("get_tps_report preserves snapshots, recognizes unset bodies, and repairs m
       clientId: "vibes-client",
     });
     const person = await personStoreForCurrentRequest(local.env, auth);
-    const tools = createStoreMemoTools(store);
-    const check = async (memo: MemoSnapshot, isTemplate: boolean) => {
-      const result = await tools.get_tps_report();
-      expect(result.isError).not.toBe(true);
-      const { name: _name, ...publicMemo } = memo;
-      expect(JSON.parse(result.content[0].text)).toEqual({
-        title: "TPS Report",
-        ...publicMemo,
-        is_template: isTemplate,
-      });
+    const check = async (memo: MemoSnapshot, _isTemplate: boolean) => {
       expect(await store.getMemo("vibes")).toEqual(memo);
-      expect(
-        JSON.parse((await tools.get_memo("vibes")).content[0].text),
-      ).toMatchObject({ error: "tps_report_required" });
     };
     let current = (await store.getMemo("vibes"))!;
     expect(current.version).toMatch(/^vibes@1·/);

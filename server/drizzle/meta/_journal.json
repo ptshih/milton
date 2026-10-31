@@ -43,6 +43,13 @@
       "when": 1793401619788,
       "tag": "0005_memos_rename",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793427435957,
+      "tag": "0006_compiled_memos",
+      "breakpoints": true
     }
   ]
 }

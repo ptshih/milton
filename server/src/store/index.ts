@@ -15,6 +15,13 @@ import {
   type ArchiveInput,
 } from "./writes";
 import { parseVersionTag, versionTag } from "./versions";
+import {
+  compiledMemos,
+  type CompiledReport,
+  type SaveMemoInput,
+  type SaveOutcome,
+} from "./compiled";
+import type { MemoCompiler } from "../compiler";
 export { StoreError } from "./errors";
 
 // Stable legacy storage key: preserve existing identities and opaque version tags.
@@ -25,6 +32,7 @@ export interface StoreBindings {
   MEMOS_SOURCE?: string;
   // Private dependency injection for the embedded fixture; never populated from a request.
   storeDatabase?: StoreDatabase;
+  memoCompiler?: MemoCompiler;
 }
 export function memosSource(bindings: StoreBindings) {
   const source = bindings.MEMOS_SOURCE ?? "bundle";
@@ -246,6 +254,8 @@ export type SearchHit =
 export type CallAllowance =
   { allowed: true } | { allowed: false; retry_at_ms: number; limit: "day" };
 export interface TenantStore {
+  readTpsReport(): Promise<CompiledReport>;
+  saveMemo(input: SaveMemoInput): Promise<SaveOutcome>;
   createMemo(input: CreateInput): Promise<MemoSnapshot>;
   updateMemo(input: UpdateInput): Promise<MemoSnapshot>;
   archiveMemo(input: ArchiveInput): Promise<MemoSnapshot>;
@@ -386,7 +396,10 @@ export async function storeForCurrentRequest(
         }
       : undefined,
   );
+  const compiled = compiledMemos(db, userId, bindings.memoCompiler, assistant);
   return {
+    readTpsReport: compiled.getTpsReport,
+    saveMemo: compiled.saveMemo,
     createMemo,
     updateMemo,
     updateTpsReport,

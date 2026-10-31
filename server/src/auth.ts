@@ -267,58 +267,11 @@ export function browserPages(config: RuntimeConfig) {
         clearTimeout(timer);
       }
     };
-    const clientNames = async (actors: Record<string, unknown>[]) => {
-      const names = new Map<string, string>();
-      const wanted = [
-        ...new Set(
-          actors
-            .filter(
-              (actor) =>
-                actor.kind === "assistant" &&
-                actor.issuer === config.issuer &&
-                typeof actor.client_id === "string",
-            )
-            .map((actor) => String(actor.client_id)),
-        ),
-      ].slice(0, 8);
-      if (!wanted.length) return names;
-      const grants = await optionalMetadata(auth.oauth2.getConsents());
-      const parsed = z
-        .array(z.object({ clientId: z.string().max(2048) }))
-        .max(200)
-        .safeParse(grants?.data);
-      if (!grants || grants.error || !parsed.success) return names;
-      const own = new Set(parsed.data.map((grant) => grant.clientId));
-      await Promise.all(
-        wanted
-          .filter((id) => own.has(id))
-          .map(async (id) => {
-            const result = await optionalMetadata(
-              auth.oauth2.publicClient({ query: { client_id: id } }),
-            );
-            const client = z
-              .object({ client_name: z.string().min(1).max(200) })
-              .safeParse(result?.data);
-            if (result && !result.error && client.success)
-              names.set(config.issuer + "\0" + id, client.data.client_name);
-          }),
-      );
-      return names;
-    };
     const renderMemos = async (account?: VerifiedStoreAuth) => {
       const verified =
         account ?? (await lookupIdentityAccount(config, await identity()));
       const store = await personStoreForCurrentRequest(config, verified);
-      let form: Record<string, string> | undefined;
-      if (request.method === "POST") {
-        const bounded = await guardStoreRequest(request, {
-          ...config,
-          MEMOS_SOURCE: "store",
-        });
-        if (bounded instanceof Response) return bounded;
-        form = Object.fromEntries(await readForm(true, bounded));
-      }
-      return memoPages(request, store, csrfField, clientNames, form);
+      return memoPages(request, store, csrfField);
     };
     const perform = async (): Promise<Response> => {
       if (isMemoRoute(url.pathname) && url.pathname !== "/")

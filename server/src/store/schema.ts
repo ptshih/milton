@@ -174,3 +174,59 @@ export const usageDaily = pgTable(
     check("usage_nonnegative", sql`${t.toolCalls} >= 0 AND ${t.writes} >= 0`),
   ],
 );
+
+// TPS is a replaceable projection. Content history belongs to memo_versions.
+export const tpsReports = pgTable(
+  "tps_reports",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    revision: integer("revision").notNull(),
+    body: text("body").notNull(),
+    sourceHash: text("source_hash").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("tps_revision_positive", sql`${t.revision} > 0`),
+    check("tps_body_limit", sql`octet_length(${t.body}) <= 32768`),
+    check("tps_source_hash", sql`${t.sourceHash} ~ '^[a-f0-9]{64}$'`),
+  ],
+);
+
+export const saveRequests = pgTable(
+  "save_requests",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    requestId: text("request_id").notNull(),
+    inputHash: text("input_hash").notNull(),
+    sourceHash: text("source_hash").notNull(),
+    reservedMicros: integer("reserved_micros").notNull(),
+    result: jsonb("result_json").notNull().default({}),
+    completed: boolean("completed").notNull().default(false),
+    deadline: timestamp("deadline", { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+    payloadBytes: bigint("payload_bytes", { mode: "number" })
+      .notNull()
+      .generatedAlwaysAs(
+        sql`octet_length(request_id)::bigint + octet_length(input_hash) + octet_length(source_hash) + 2048 + 128`,
+      ),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.requestId] }),
+    index("save_requests_by_day").on(t.createdAt),
+    index("save_requests_by_account_day").on(t.userId, t.createdAt),
+    check(
+      "save_request_hashes",
+      sql`${t.inputHash} ~ '^[a-f0-9]{64}$' AND ${t.sourceHash} ~ '^[a-f0-9]{64}$'`,
+    ),
+    check("save_request_cost", sql`${t.reservedMicros} >= 0`),
+    check("save_request_id", sql`length(${t.requestId}) = 36`),
+    check(
+      "save_request_result",
+      sql`jsonb_typeof(${t.result}) = 'object' AND octet_length(${t.result}::text) <= 2048`,
+    ),
+  ],
+);

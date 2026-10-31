@@ -335,13 +335,9 @@ test("Neon server adapter preserves signed queries, cookies, sign-in admission a
     ).toBe(400);
     const home = await send("/");
     const homeHtml = await home.text();
-    expect(homeHtml).toContain("<h1>Your TPS Report</h1>");
-    expect(homeHtml).toContain("<h2>Your memos</h2>");
-    expect(homeHtml.indexOf('href="/tps-report"')).toBeLessThan(
-      homeHtml.indexOf("<h2>Your memos</h2>"),
-    );
-    expect(homeHtml.match(/href="\/tps-report"/g)).toHaveLength(2);
-    expect((await send("/?result=constructor")).status).toBe(200);
+    expect(homeHtml).toContain("<h1>TPS Report</h1>");
+    expect(homeHtml).not.toContain("Version history");
+    expect(homeHtml).not.toContain("Your memos");
     expect((await send("/new-memo")).status).toBe(404);
     const browserPost = async (
       path: string,
@@ -363,186 +359,9 @@ test("Neon server adapter preserves signed queries, cookies, sign-in admission a
         }),
       );
     };
-    const account = await lookupIdentityAccount(local.env, {
-      provider: "neon",
-      subject: "neon-browser",
-    });
-    const person = await personStoreForCurrentRequest(local.env, account);
-    const assistant = await storeForCurrentRequest(local.env, account, {
-      issuer,
-      clientId: "fixture",
-    });
-    await assistant.createMemo({
-      name: "new",
-      description: "A page memo.",
-      text: "Original </textarea><script>alert(1)</script>",
-    });
-    expect(
-      (
-        await browserPost("/memos", {
-          name: "refused",
-          description: "No",
-          text: "No",
-        })
-      ).status,
-    ).toBe(404);
-    const editor = await send("/memos/new");
-    const editorHtml = await editor.text();
-    expect(editorHtml).toContain("<dt>Version</dt><dd>1</dd>");
-    expect(editorHtml).toContain("&lt;/textarea&gt;&lt;script&gt;");
-    expect(editorHtml).not.toContain("<script>");
-    const tag = /name="expected_version" value="([^"]+)"/.exec(editorHtml)![1]!;
-    const memoId = /name="memo_id" value="([^"]+)"/.exec(editorHtml)![1]!;
-    await assistant.updateMemo({
-      name: "new",
-      expected_version: tag,
-      description: "Edited.",
-      text: "Changed café",
-      reason: "Approved preference",
-    });
-    const conflict = await browserPost("/memos/new/archive", {
-      expected_version: tag,
-      memo_id: memoId,
-    });
-    expect(conflict.status).toBe(409);
-    const conflictHtml = await conflict.text();
-    expect(conflictHtml).toContain('role="alert"');
-    expect(conflictHtml).toContain("Changed café");
-    expect(conflictHtml).not.toContain("<textarea");
-    expect(
-      (
-        await browserPost(
-          "/memos/new/archive",
-          { expected_version: tag, memo_id: memoId },
-          "https://evil.example",
-        )
-      ).status,
-    ).toBe(403);
-    const tpsHtml = await (await send("/tps-report")).text();
-    expect(tpsHtml).not.toContain("Archive memo");
-    expect(tpsHtml).not.toContain("Delete memo");
-    expect(tpsHtml).not.toContain("<textarea");
-    expect(tpsHtml).toContain("Version history");
-    for (const action of ["archive", "delete", "save", "restore"]) {
-      expect(
-        (
-          await browserPost(`/tps-report/${action}`, {
-            expected_version: tag,
-            memo_id: memoId,
-          })
-        ).status,
-      ).toBe(404);
+    for (const path of ["/memos", "/memos/new/archive", "/tps-report/revert"]) {
+      expect((await browserPost(path, {})).status).toBe(404);
     }
-    for (const path of ["/", "/tps-report"]) {
-      await local.db.query(
-        sql`DELETE FROM memos WHERE user_id=${account.userId} AND name='vibes'`,
-      );
-      expect((await send(path)).status).toBe(200);
-      expect(await person.getMemo("vibes")).toMatchObject({
-        text: "",
-        archived: false,
-      });
-      expect((await person.history("vibes")).items).toMatchObject([
-        { version: 1, reason: "Created TPS Report", actor: { kind: "system" } },
-      ]);
-    }
-    await assistant.createMemo({
-      name: "assistant",
-      description: "Assistant attribution.",
-      text: "A preference",
-    });
-    const namedHistory = await send("/memos/assistant/history");
-    expect(await namedHistory.text()).toContain(
-      "&lt;script&gt;alert(&quot;client&quot;)&lt;/script&gt;",
-    );
-    expect(
-      calls.filter((call) => call.path === "/oauth2/get-consents"),
-    ).toHaveLength(1);
-    metadataAvailable = false;
-    const unnamedHistory = await send("/memos/assistant/history");
-    expect(unnamedHistory.status).toBe(200);
-    expect(await unnamedHistory.text()).toContain("fixture");
-    metadataAvailable = true;
-    // Historical import IDs are stored data, even after the public rename.
-    for (const [index, id] of ["recipe-import", "memo-import"].entries()) {
-      await local.db.query(sql`INSERT INTO memo_versions
-        (user_id,memo_id,version,description,body,reason,actor_json)
-        SELECT user_id,id,${index + 2},'Imported.','Kept text','Import',${JSON.stringify({ kind: "system", id })}
-        FROM memos WHERE user_id=${account.userId} AND name='assistant'`);
-      expect(
-        await (await send(`/memos/assistant/history/${index + 2}`)).text(),
-      ).toContain("Memo import");
-    }
-    for (const variant of ["duplicate", "file", "missing-csrf"]) {
-      const form = new FormData();
-      if (variant !== "missing-csrf") form.set("csrf", jar.get("milton-csrf")!);
-      form.set("name", "refused");
-      form.set("description", "Refused.");
-      form.set("text", "Refused");
-      if (variant === "duplicate") form.append("text", "Duplicate");
-      if (variant === "file")
-        form.set("text", new File(["file content"], "memo.md"));
-      const refusal = await app(
-        new Request(appOrigin + "/memos", {
-          method: "POST",
-          headers: {
-            Host: "localhost:3001",
-            Origin: appOrigin,
-            Cookie: [...jar].map(([k, v]) => k + "=" + v).join("; "),
-          },
-          body: form,
-        }),
-      );
-      expect(refusal.status).toBe(403);
-    }
-    const edited = (await person.getMemo("new"))!;
-    expect(
-      (
-        await browserPost("/memos/new/archive", {
-          expected_version: edited.version,
-          memo_id: memoId,
-        })
-      ).status,
-    ).toBe(303);
-    const archived = (await person.getMemo("new"))!;
-    expect(
-      (
-        await browserPost("/memos/new/restore", {
-          expected_version: archived.version,
-          memo_id: memoId,
-        })
-      ).status,
-    ).toBe(303);
-    const restored = (await person.getMemo("new"))!;
-    expect(
-      (
-        await browserPost("/memos/new/revert", {
-          expected_version: restored.version,
-          memo_id: memoId,
-          source_version: "1",
-        })
-      ).status,
-    ).toBe(303);
-    const history = await send("/memos/new/history");
-    expect(await history.text()).toContain("Reverted to version 1");
-    const selected = await send("/memos/new/history/2");
-    expect(await selected.text()).toContain("+ Changed café");
-    const download = await send("/download");
-    expect(download.headers.get("Content-Type")).toBe("application/zip");
-    expect(download.headers.get("Content-Disposition")).toBe(
-      'attachment; filename="milton-memos.zip"',
-    );
-    const reverted = (await person.getMemo("new"))!;
-    for (const confirmation of ["wrong", "new"]) {
-      const refusedDelete = await browserPost("/memos/new/delete", {
-        expected_version: reverted.version,
-        memo_id: memoId,
-        confirmation,
-      });
-      expect(refusedDelete.status).toBe(404);
-    }
-    expect((await send("/memos/new")).status).toBe(200);
-    expect((await person.history("new")).items).toHaveLength(5);
     const currentCsrf = jar.get("milton-csrf")!;
     const sameOriginNull = await app(
       new Request(appOrigin + "/consent", {
@@ -781,29 +600,32 @@ async function memoPageFixture() {
     subject: "page-fixes",
   });
   const store = await personStoreForCurrentRequest(local.env, account);
-  const author = await storeForCurrentRequest(local.env, account, {
-    issuer,
-    clientId: "fixture",
-  });
-  let failWrite = false,
-    failReadAfterWrite = false,
-    readsUnavailable = false;
-  const storeDatabase: typeof local.db = {
-    async query(statement) {
-      if (readsUnavailable) throw new Error("Fixture unavailable");
-      return local.db.query(statement);
+  const author = await storeForCurrentRequest(
+    {
+      ...local.env,
+      memoCompiler: {
+        reserveMicros: 100,
+        accountBudgetMicros: 10000,
+        globalBudgetMicros: 20000,
+        async compile(input) {
+          return {
+            decision: "apply",
+            memos: [
+              {
+                id: input.memos[0]?.id ?? null,
+                description: "Instructions",
+                text: input.text,
+              },
+            ],
+            tps: input.text,
+            message: "File instructions.",
+          };
+        },
+      },
     },
-    async transaction(work) {
-      const result = await local.db.transaction(work);
-      if (failWrite) {
-        failWrite = false;
-        readsUnavailable = failReadAfterWrite;
-        throw new Error("Fixture cleanup failed after commit");
-      }
-      return result;
-    },
-    withConnection: (work) => local.db.withConnection(work),
-  };
+    account,
+    { issuer, clientId: "fixture" },
+  );
   const upstream = spyOn(globalThis, "fetch").mockImplementation(
     Object.assign(
       async (input: Parameters<typeof fetch>[0]) => {
@@ -823,7 +645,6 @@ async function memoPageFixture() {
   );
   const app = createMiltonApp({
     ...local.env,
-    storeDatabase,
     issuer,
     resource,
     appOrigin,
@@ -834,18 +655,6 @@ async function memoPageFixture() {
     store,
     author,
     db: local.db,
-    personWrites: memoWrites(local.db, account.userId, { kind: "person" }),
-    failNextWrite(failedRead: boolean) {
-      failWrite = true;
-      failReadAfterWrite = failedRead;
-    },
-    resumeReads() {
-      readsUnavailable = false;
-    },
-    removeMemo: (name: string) =>
-      local.db.query(
-        sql`DELETE FROM memos WHERE user_id=${account.userId} AND name=${name}`,
-      ),
     async send(path: string, fields?: Record<string, string>) {
       const body = fields ? new FormData() : undefined;
       if (body) {
@@ -880,279 +689,58 @@ async function memoPageFixture() {
   };
 }
 
-test("read-only memo pages reject removed forms and recover stored ordinary and TPS versions", async () => {
+test("web shows only current TPS and rejects all retired history and mutation routes", async () => {
   const fixture = await memoPageFixture();
   try {
-    for (const forbidden of [
-      "createMemo",
-      "updateMemo",
-      "updateTpsReport",
-      "deleteMemo",
-    ])
-      expect(fixture.store).not.toHaveProperty(forbidden);
-    const memo = await fixture.author.createMemo({
-      name: "tps-report",
-      description: "Original.",
-      text: "Original </textarea><script>draft</script>.",
+    const empty = await (await fixture.send("/")).text();
+    expect(empty).toContain("No instructions on file.");
+    const first = await fixture.author.readTpsReport();
+    const body = "Lead with the answer. <script>alert('fixture')</script>";
+    const outcome = await fixture.author.saveMemo({
+      text: body,
+      expected_version: first.version,
+      request_id: crypto.randomUUID(),
     });
-    const view = await (await fixture.send("/memos/tps-report")).text();
-    expect(view).not.toContain("<textarea");
-    expect(view).not.toContain('name="description"');
-    expect(view).not.toContain("Delete memo");
-    expect(view).toContain("&lt;script&gt;draft&lt;/script&gt;");
-    const fields = {
-      expected_version: memo.version,
-      memo_id: /name="memo_id" value="([^"]+)"/.exec(view)![1]!,
-    };
-    for (const path of [
-      "/new-memo",
-      "/new-recipe",
-      "/recipes",
-      "/recipes/tps-report",
-      "/memos/vibes",
-      "/memos/vibes/history",
-      "/tps-report/save",
-    ]) {
-      expect((await fixture.send(path)).status).toBe(404);
-    }
+    expect(outcome.status).toBe("saved");
+    const html = await (await fixture.send("/tps-report")).text();
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).not.toContain("<script>");
+    for (const absent of [
+      "Version history",
+      "Restore",
+      "Archive",
+      "Your memos",
+      "<textarea",
+      "writes today",
+    ])
+      expect(html).not.toContain(absent);
+    const before = await fixture.db.query(
+      sql`SELECT * FROM memo_versions ORDER BY user_id,memo_id,version`,
+    );
     for (const path of [
       "/memos",
-      "/recipes",
-      "/recipes/tps-report/save",
-      "/memos/tps-report/save",
-      "/memos/tps-report/delete",
-      "/memos/vibes/revert",
-      "/tps-report/archive",
-      "/tps-report/delete",
+      "/memos/sample",
+      "/memos/sample/history",
+      "/memos/sample/archive",
+      "/memos/sample/restore",
+      "/memos/sample/revert",
+      "/tps-report/history",
+      "/tps-report/history/1",
+      "/tps-report/revert",
     ]) {
-      expect(
-        (
-          await fixture.send(path, {
-            ...fields,
-            text: "Must not write",
-            recipe_id: fields.memo_id,
-          })
-        ).status,
-      ).toBe(404);
+      expect((await fixture.send(path)).status).toBe(404);
+      expect((await fixture.send(path, {})).status).toBe(404);
     }
-    expect(await fixture.store.getMemo(memo.name)).toEqual(memo);
-    const injectedFields: Record<string, string>[] = [
-      { reason: "Custom" },
-      { text: "Injected" },
-      { description: "Injected" },
-      { recipe_id: fields.memo_id },
-      { source_version: "1" },
-    ];
-    for (const injected of injectedFields) {
-      expect(
-        (
-          await fixture.send(
-            "/memos/tps-report/archive",
-            Object.assign({}, fields, injected),
-          )
-        ).status,
-      ).toBe(400);
-    }
-    expect(
-      (await fixture.send("/memos/tps-report/archive", fields)).status,
-    ).toBe(303);
-    const archived = (await fixture.store.getMemo(memo.name))!;
-    const archivedView = await (await fixture.send("/memos/tps-report")).text();
-    expect(archivedView).toContain(
-      "Restore this memo first, then ask your connected assistant to update its instructions.",
-    );
-    expect(archivedView).toContain('action="/memos/tps-report/restore"');
-    const conflict = await fixture.send("/memos/tps-report/archive", fields);
-    expect(conflict.status).toBe(409);
-    const conflictView = await conflict.text();
-    expect(conflictView).toContain('role="alert"');
-    expect(conflictView).toContain(archived.version);
-    expect(conflictView).not.toContain("<textarea");
-    expect((await fixture.store.history(memo.name)).items).toHaveLength(2);
-    expect(
-      (
-        await fixture.send("/memos/tps-report/restore", {
-          ...fields,
-          expected_version: archived.version,
-        })
-      ).status,
-    ).toBe(303);
-    let current = (await fixture.store.getMemo(memo.name))!;
-    expect(current.archived).toBe(false);
-    const chosen = await (
-      await fixture.send("/memos/tps-report/history/2")
-    ).text();
-    expect(chosen).toContain("Archived");
-    expect(chosen).toContain("Restore this version");
-    expect(chosen).toContain("creates a new version");
-    for (const source_version of ["0", "2147483648", "999"]) {
-      expect(
-        (
-          await fixture.send("/memos/tps-report/revert", {
-            ...fields,
-            expected_version: current.version,
-            source_version,
-          })
-        ).status,
-      ).toBe(source_version === "999" ? 422 : 400);
-    }
-    expect(
-      (
-        await fixture.send("/memos/tps-report/revert", {
-          ...fields,
-          expected_version: current.version,
-          source_version: "2",
-          text: "Injected",
-        })
-      ).status,
-    ).toBe(400);
-    expect(
-      (
-        await fixture.send("/memos/tps-report/revert", {
-          ...fields,
-          expected_version: current.version,
-          source_version: "2",
-        })
-      ).status,
-    ).toBe(303);
-    current = (await fixture.store.getMemo(memo.name))!;
-    expect(current.archived).toBe(true);
-    expect(current.text).toBe(memo.text);
-    expect(
-      (await fixture.store.history(memo.name)).items.map((v) => v.version),
-    ).toEqual([4, 3, 2, 1]);
-    const tps = await fixture.store.getTpsReport();
-    const updated = await fixture.author.updateTpsReport({
-      text: "A working preference",
-      reason: "Approved draft",
-      expected_version: tps.version,
-    });
-    const tpsHistory = await (
-      await fixture.send("/tps-report/history/1")
-    ).text();
-    expect(tpsHistory).toContain("TPS Report: version 1");
-    expect(tpsHistory).toContain('action="/tps-report/revert"');
-    expect(tpsHistory).not.toContain("Archive memo");
-    const tpsFields = {
-      expected_version: updated.version,
-      memo_id: /name="memo_id" value="([^"]+)"/.exec(tpsHistory)![1]!,
-      source_version: "1",
-    };
-    expect((await fixture.send("/tps-report/revert", tpsFields)).status).toBe(
-      303,
-    );
-    expect(await fixture.store.getTpsReport()).toMatchObject({
-      text: "",
-      archived: false,
-    });
-    expect(
-      (await fixture.store.history("vibes")).items.map((v) => v.version),
-    ).toEqual([3, 2, 1]);
-    const staleTps = await fixture.send("/tps-report/revert", tpsFields);
-    expect(staleTps.status).toBe(409);
-    expect(await staleTps.text()).toContain("TPS Report");
-    const emptyHead = await fixture.store.getTpsReport();
-    await fixture.db
-      .query(sql`INSERT INTO memo_versions (user_id,memo_id,version,description,body,archived,reason,actor_json,details_json)
-      SELECT user_id,memo_id,4,description,body,true,'Legacy archived source','{}','{}' FROM memo_versions WHERE version=3 AND memo_id=${tpsFields.memo_id}`);
-    const legacyView = await (
-      await fixture.send("/tps-report/history/4")
-    ).text();
-    expect(legacyView).toContain("<dt>Status</dt><dd>Archived</dd>");
-    expect(legacyView).toContain("The restored TPS Report stays active.");
-    const repairedHead = await fixture.store.getTpsReport();
-    expect(repairedHead.version).not.toBe(emptyHead.version);
-    expect(
-      (
-        await fixture.send("/tps-report/revert", {
-          ...tpsFields,
-          expected_version: repairedHead.version,
-          source_version: "4",
-        })
-      ).status,
-    ).toBe(303);
-    expect((await fixture.store.getTpsReport()).archived).toBe(false);
-    expect((await fixture.store.getVersion("vibes", 4))?.archived).toBe(true);
-    expect((await fixture.store.history("vibes")).items[0]?.reason).toBe(
-      "Restored TPS Report from version 4",
-    );
     expect(
       await fixture.db.query(
-        sql`SELECT u.id FROM users u WHERE retained_bytes<>(SELECT sum(payload_bytes) FROM memo_versions v WHERE v.user_id=u.id)`,
+        sql`SELECT * FROM memo_versions ORDER BY user_id,memo_id,version`,
       ),
-    ).toEqual([]);
-    const emptyView = await (await fixture.send("/tps-report")).text();
-    expect(emptyView).toContain("TPS Report is empty");
-    expect(emptyView).not.toContain("<textarea");
-    expect(emptyView).not.toContain("Clear TPS");
-    expect(emptyView).not.toContain('name="expected_version"');
-    await expect(
-      fixture.personWrites.createMemo({
-        name: "person",
-        text: "No",
-        description: "No",
-      }),
-    ).rejects.toMatchObject({ code: "assistant_required", status: 403 });
-    await expect(
-      fixture.personWrites.updateMemo({
-        name: memo.name,
-        text: "No",
-        reason: "No",
-        expected_version: current.version,
-      }),
-    ).rejects.toMatchObject({ code: "assistant_required", status: 403 });
-    const zip = await fixture.send("/download");
-    expect(zip.headers.get("Content-Disposition")).toContain(
-      "milton-memos.zip",
+    ).toEqual(before);
+    const download = await fixture.send("/download");
+    expect(download.headers.get("Content-Disposition")).toBe(
+      'attachment; filename="TPS.md"',
     );
-  } finally {
-    await fixture.dispose();
-  }
-}, 30000);
-
-test("recovery errors never retry uncertain writes or display a failed reread as current", async () => {
-  const fixture = await memoPageFixture();
-  try {
-    const memo = await fixture.author.createMemo({
-      name: "uncertain",
-      description: "Exact bytes.",
-      text: "x\n".repeat(16384),
-    });
-    const view = await (await fixture.send("/memos/uncertain")).text();
-    const fields = {
-      expected_version: memo.version,
-      memo_id: /name="memo_id" value="([^"]+)"/.exec(view)![1]!,
-    };
-    fixture.failNextWrite(false);
-    const uncertain = await fixture.send("/memos/uncertain/archive", fields);
-    expect(uncertain.status).toBe(503);
-    const html = await uncertain.text();
-    expect(html).toContain('role="alert"');
-    expect(html).toContain("write outcome is unavailable");
-    expect(html).not.toContain('role="status"');
-    expect(html).not.toContain("<textarea");
-    const head = (await fixture.store.getMemo("uncertain"))!;
-    expect(head.archived).toBe(true);
-    expect(head.text).toBe(memo.text);
-    expect((await fixture.store.history("uncertain")).items).toHaveLength(2);
-    fixture.failNextWrite(true);
-    const unavailable = await fixture.send("/memos/uncertain/restore", {
-      ...fields,
-      expected_version: head.version,
-    });
-    expect(unavailable.status).toBe(503);
-    const unavailableHtml = await unavailable.text();
-    expect(unavailableHtml).toContain('role="alert"');
-    expect(unavailableHtml).not.toContain('name="expected_version"');
-    expect(unavailableHtml).not.toContain("Exact bytes.");
-    expect(unavailableHtml).not.toContain("<textarea");
-    fixture.resumeReads();
-    expect((await fixture.store.history("uncertain")).items).toHaveLength(3);
-    expect((await fixture.store.getMemo("uncertain"))?.text).toBe(memo.text);
-    await fixture.removeMemo("uncertain");
-    const absent = await fixture.send("/memos/uncertain/restore", fields);
-    expect(absent.status).toBe(404);
-    expect(await absent.text()).not.toContain('name="expected_version"');
+    expect(await download.text()).toBe(body);
   } finally {
     await fixture.dispose();
   }
